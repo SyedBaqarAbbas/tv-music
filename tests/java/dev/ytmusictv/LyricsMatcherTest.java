@@ -31,6 +31,27 @@ public final class LyricsMatcherTest {
         check(!LyricsMatcher.timingMatches(187, Double.POSITIVE_INFINITY));
         equal("Synthetic first line\nSynthetic second line", LyricsMatcher.plainFromSynced(
                 "[ar:Test artist]\n[offset:100]\n[00:01.00]Synthetic first line\n[00:02.00][00:04.00]Synthetic second line"));
+        String fullText = "First synthetic lyric line for the opening\n"
+                + "Second synthetic lyric line continues the story\n"
+                + "Third synthetic lyric line with another phrase\n"
+                + "Fourth synthetic lyric line moves into the chorus\n"
+                + "Fifth synthetic lyric line returns to the refrain\n"
+                + "Sixth synthetic lyric line brings us to the ending";
+        check(LyricsMatcher.incompleteSynced("[00:02.00]Opening fragment", fullText));
+        check(LyricsMatcher.incompleteSynced("[00:02.00]Opening fragment\n[00:10.00]Another fragment", fullText));
+        check(LyricsMatcher.incompleteSynced("[ar:Synthetic]\n[00:02.00]", fullText));
+        check(!LyricsMatcher.incompleteSynced("[00:02.00]A single vocal phrase", "A single vocal phrase"));
+        check(!LyricsMatcher.incompleteSynced("[00:02.00]A single vocal phrase", ""));
+        check(!LyricsMatcher.incompleteSynced("", fullText));
+        check(!LyricsMatcher.incompleteSynced("[00:02.00]Short interlude", "Short\ninterlude"));
+        String repeated = "The same synthetic refrain repeated through the whole song";
+        check(!LyricsMatcher.incompleteSynced("[00:02][00:20][00:40][01:00][01:20][01:40]" + repeated,
+                String.join("\n", repeated, repeated, repeated, repeated, repeated, repeated)));
+        StringBuilder completeTimed = new StringBuilder();
+        for (String line : fullText.split("\n")) completeTimed.append("[00:20.00]").append(line).append('\n');
+        check(!LyricsMatcher.incompleteSynced(completeTimed.toString(), fullText));
+        check(!LyricsMatcher.incompleteSynced("[00:01]" + fullText.replace('\n', ' '), fullText));
+        check(LyricsMatcher.incompleteSynced("[00:01]작은 노래", fullText));
         System.out.println("Lyrics matching checks passed: " + checks);
     }
 

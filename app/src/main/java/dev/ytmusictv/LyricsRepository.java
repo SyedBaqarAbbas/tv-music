@@ -83,7 +83,8 @@ public final class LyricsRepository implements AutoCloseable {
             Response exact = lookup("exact", signature(title, artist, album, duration), false, token);
             if (exact.failure != null) return exact.failure;
             JSONObject found = usableRecord(exact.record, title, artist, duration, exact.code);
-            if (found != null) return found;
+            if (found != null && !found.optBoolean("syncedIncomplete")) return found;
+            JSONObject fallback = found;
             String cleanedTitle = LyricsMatcher.cleanTitle(title, artist);
             String cleanedArtist = LyricsMatcher.queryArtist(artist);
             // A video may have an intro/outro. Drop album and duration constraints;
@@ -91,17 +92,21 @@ public final class LyricsRepository implements AutoCloseable {
             if (!album.isEmpty() || (duration >= 1 && duration <= 3600)
                     || !title.equals(cleanedTitle) || !artist.equals(cleanedArtist)) {
                 Response cleaned = lookup("normalized", signature(cleanedTitle, cleanedArtist, "", 0), false, token);
-                if (cleaned.failure != null) return cleaned.failure;
+                if (cleaned.failure != null) return fallback != null ? fallback : cleaned.failure;
                 found = usableRecord(cleaned.record, title, artist, duration, cleaned.code);
-                if (found != null) return found;
+                if (found != null && "synced".equals(found.optString("status"))) return found;
+                if (fallback == null && found != null && !found.optBoolean("syncedIncomplete")) return found;
+                fallback = fullerFallback(fallback, found);
             }
             // At most three sequential calls. Search is capped and matches title AND artist.
             Response searched = lookup("search", "/search?track_name=" + encode(cleanedTitle)
                     + "&artist_name=" + encode(cleanedArtist), true, token);
-            if (searched.failure != null) return searched.failure;
+            if (searched.failure != null) return fallback != null ? fallback : searched.failure;
             found = usableRecord(select(searched.records, title, artist, album, duration),
                     title, artist, duration, searched.code);
-            return found != null ? found : status("missing", "No matching lyrics found for this recording.", searched.code);
+            if (found != null && "synced".equals(found.optString("status"))) return found;
+            fallback = fullerFallback(fallback, found);
+            return fallback != null ? fallback : status("missing", "No matching lyrics found for this recording.", searched.code);
         } catch (Exception error) {
             diagnostic("lookup failed: " + error.getClass().getSimpleName());
             return status("error", "Lyrics are unavailable. Check your connection and try again.", 0);
@@ -191,7 +196,9 @@ public final class LyricsRepository implements AutoCloseable {
             boolean timed = LyricsMatcher.timingMatches(duration, candidateDuration);
             double distance = Double.isFinite(candidateDuration) && candidateDuration > 0 && duration > 0
                     ? Math.min(Math.abs(duration - candidateDuration), 600) : 600;
-            double score = (timed ? 1000 : 0) + (!text(record, "syncedLyrics").isEmpty() ? 50 : 20)
+            String synced = text(record, "syncedLyrics"), plain = text(record, "plainLyrics");
+            boolean completeTimed = !synced.isEmpty() && !LyricsMatcher.incompleteSynced(synced, plain);
+            double score = (timed ? 1000 : 0) + (completeTimed ? 100 : 20)
                     + (LyricsMatcher.normalize(album).equals(LyricsMatcher.normalize(field(record, "albumName"))) ? 10 : 0)
                     - distance;
             if (score > bestScore) { best = record; bestScore = score; }
@@ -207,6 +214,8 @@ public final class LyricsRepository implements AutoCloseable {
         String synced = text(record, "syncedLyrics");
         String plain = text(record, "plainLyrics");
         if (synced.isEmpty() && plain.isEmpty()) return null;
+        boolean incomplete = LyricsMatcher.incompleteSynced(synced, plain);
+        if (incomplete) synced = "";
         if (!timed) {
             if (plain.isEmpty()) plain = LyricsMatcher.plainFromSynced(synced);
             synced = "";
@@ -216,8 +225,24 @@ public final class LyricsRepository implements AutoCloseable {
         payload.put("syncedLyrics", synced);
         payload.put("plainLyrics", plain);
         payload.put("timingMatched", timed);
+        if (incomplete) {
+            payload.put("syncedIncomplete", true);
+            payload.put("message", "Timed lyrics are incomplete. Showing the available full text.");
+        }
         diagnostic("match timing " + (timed ? "within 3s" : "unsynced"));
         return payload;
+    }
+
+    private static JSONObject fullerFallback(JSONObject first, JSONObject second) {
+        if (first == null) return second;
+        if (second == null) return first;
+        // A conflicting search flag must not replace vocal text already found
+        // for the exact recording with an empty instrumental view.
+        if ("instrumental".equals(second.optString("status"))) return first;
+        if (first.optBoolean("timingMatched") != second.optBoolean("timingMatched")) {
+            return first.optBoolean("timingMatched") ? first : second;
+        }
+        return text(second, "plainLyrics").length() > text(first, "plainLyrics").length() ? second : first;
     }
 
     private static boolean matches(JSONObject record, String title, String artist) {

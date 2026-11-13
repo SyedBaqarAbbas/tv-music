@@ -13,13 +13,15 @@ final class CursorOverlayView extends View {
     private final Paint outline = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path arrow = new Path();
     private final float size;
-    private float cursorX;
-    private float cursorY;
+    private final float padding;
+    private final int viewSize;
 
     CursorOverlayView(Context context) {
         super(context);
         float density = getResources().getDisplayMetrics().density;
         size = 21f * density;
+        padding = 2f * density;
+        viewSize = (int) Math.ceil(size + padding * 2f);
         arrow.moveTo(0, 0);
         arrow.lineTo(0, 16f * density);
         arrow.lineTo(4.5f * density, 12f * density);
@@ -34,6 +36,8 @@ final class CursorOverlayView extends View {
         outline.setStyle(Paint.Style.STROKE);
         outline.setStrokeWidth(1.6f * density);
         outline.setStrokeJoin(Paint.Join.ROUND);
+        setPivotX(padding);
+        setPivotY(padding);
         setFocusable(false);
         setFocusableInTouchMode(false);
         setClickable(false);
@@ -42,26 +46,24 @@ final class CursorOverlayView extends View {
         setVisibility(View.INVISIBLE);
     }
 
-    void setPosition(float x, float y) {
-        invalidateRegion(cursorX, cursorY);
-        cursorX = x;
-        cursorY = y;
-        invalidateRegion(cursorX, cursorY);
-    }
+    int getCursorViewSize() { return viewSize; }
 
-    private void invalidateRegion(float x, float y) {
-        int padding = (int) Math.ceil(size + outline.getStrokeWidth());
-        invalidate((int) x - padding, (int) y - padding,
-                (int) x + padding + 1, (int) y + padding + 1);
+    void setPosition(float x, float y) {
+        if (!(getParent() instanceof View)) return;
+        View viewport = (View) getParent();
+        // Only update the RenderNode transform. The small arrow's display list
+        // stays cached; key repeats neither invalidate a screen-size View nor
+        // rebuild the path. Android coalesces transforms into the next frame.
+        setScaleX(x > viewport.getWidth() - size ? -1f : 1f);
+        setScaleY(y > viewport.getHeight() - size ? -1f : 1f);
+        setTranslationX(x - padding);
+        setTranslationY(y - padding);
     }
 
     @Override protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
         int saved = canvas.save();
-        canvas.translate(cursorX, cursorY);
-        // Keep the arrow visible while its tip can reach every edge of the page.
-        canvas.scale(cursorX > getWidth() - size ? -1f : 1f,
-                cursorY > getHeight() - size ? -1f : 1f);
+        canvas.translate(padding, padding);
         canvas.drawPath(arrow, outline);
         canvas.drawPath(arrow, fill);
         canvas.restoreToCount(saved);

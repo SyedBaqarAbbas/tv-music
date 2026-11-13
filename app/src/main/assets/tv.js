@@ -44,24 +44,51 @@
   var lyricsBody = null, lyricsRetry = null, lyricsFollow = null, emptyState = null, retryNonce = 0;
   var lastArtwork = '', lastTrackStamp = '', renderFailure = false;
   var lastTransportSecond = -1;
+  var cachedMedia = null, cachedBar = null, cachedTitle = null, cachedArtist = null, cachedSitePlayer = null;
+  var lastLyricTime = -1, lastLyricPlaying = null;
+  var motionQuery = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  var smoothLyrics = !!(window.CSS && CSS.supports && CSS.supports('scroll-behavior', 'smooth')
+    && !(motionQuery && motionQuery.matches));
+  document.documentElement.classList.toggle('tv-smooth-lyrics', smoothLyrics);
+  function updateMotionPreference() {
+    smoothLyrics = !!(window.CSS && CSS.supports && CSS.supports('scroll-behavior', 'smooth')
+      && !(motionQuery && motionQuery.matches));
+    document.documentElement.classList.toggle('tv-smooth-lyrics', smoothLyrics);
+    if (!smoothLyrics) instantScroll(scroller);
+  }
+  if (motionQuery) {
+    if (motionQuery.addEventListener) motionQuery.addEventListener('change', updateMotionPreference);
+    else if (motionQuery.addListener) motionQuery.addListener(updateMotionPreference);
+  }
   var SELECTOR = 'a[href],button,input,[role="button"],[role="tab"],[tabindex="0"]';
 
   function player() {
+    if (cachedMedia && cachedMedia.isConnected
+        && cachedMedia.matches('#song-video video, #movie_player video, video.html5-main-video')) return cachedMedia;
     var main = document.querySelector('#song-video video, #movie_player video, video.html5-main-video');
-    if (main) return main;
+    if (main) return (cachedMedia = main);
     var media = document.querySelectorAll('video,audio');
     for (var i = 0; i < media.length; i++) {
-      if (isFinite(media[i].duration) && media[i].duration > 0) return media[i];
+      if (isFinite(media[i].duration) && media[i].duration > 0) return (cachedMedia = media[i]);
     }
-    return media[0] || null;
+    return (cachedMedia = media[0] || null);
+  }
+  function sitePlayer() {
+    if (!cachedSitePlayer || !cachedSitePlayer.isConnected) cachedSitePlayer = document.querySelector('#movie_player');
+    return cachedSitePlayer;
   }
   function clean(value) { return typeof value === 'string' ? value.trim().slice(0, 512) : ''; }
   function metadata() {
     var video = player();
     var md = navigator.mediaSession && navigator.mediaSession.metadata;
-    var bar = document.querySelector("ytmusic-player-bar");
-    var titleEl = bar && bar.querySelector(".title");
-    var artistEl = bar && (bar.querySelector(".byline a") || bar.querySelector(".byline"));
+    if (!cachedBar || !cachedBar.isConnected) cachedBar = document.querySelector('ytmusic-player-bar');
+    var bar = cachedBar;
+    if (!cachedTitle || !cachedTitle.isConnected) cachedTitle = bar && bar.querySelector('.title');
+    if (!cachedArtist || !cachedArtist.isConnected || cachedArtist.classList.contains('byline')) {
+      cachedArtist = bar && (bar.querySelector('.byline a') || bar.querySelector('.byline'));
+    }
+    var titleEl = cachedTitle;
+    var artistEl = cachedArtist;
     var title = clean(md && md.title) || clean(titleEl && titleEl.textContent);
     var artist = clean(md && md.artist) || clean(artistEl && artistEl.textContent).split(/\s*[•·]\s*/)[0];
     if (!title || !artist || !video || !isFinite(video.duration)) return null;
@@ -69,8 +96,8 @@
     var link = bar && bar.querySelector('a[href*="watch?v="]');
     var videoId = '';
     try {
-      var sitePlayer = document.querySelector('#movie_player');
-      var details = sitePlayer && sitePlayer.getVideoData && sitePlayer.getVideoData();
+      var api = sitePlayer();
+      var details = api && api.getVideoData && api.getVideoData();
       videoId = clean(details && details.video_id);
     } catch (error) { }
     var id = link ? link.getAttribute("href") : videoId || title + "\n" + artist;
@@ -123,8 +150,8 @@
     var source = clean(image && image.src) || clean(barImage && barImage.getAttribute('src'));
     if (!source || source.indexOf('data:') === 0) {
       try {
-        var sitePlayer = document.querySelector('#movie_player');
-        var response = sitePlayer && sitePlayer.getPlayerResponse && sitePlayer.getPlayerResponse();
+        var api = sitePlayer();
+        var response = api && api.getPlayerResponse && api.getPlayerResponse();
         var thumbnail = response && response.videoDetails && response.videoDetails.thumbnail;
         var thumbnails = thumbnail && thumbnail.thumbnails;
         if (thumbnails && thumbnails.length) {
@@ -193,7 +220,11 @@
     if (visible()) {
       if (direction === "up" && scroller.scrollTop <= 0) return false;
       if (direction === "up" || direction === "down") {
-        scroller.scrollTop += direction === "down" ? innerHeight * 0.4 : -innerHeight * 0.4;
+        var oldScrollTop = scroller.scrollTop;
+        instantScroll(scroller, function () {
+          scroller.scrollTop += direction === "down" ? innerHeight * 0.4 : -innerHeight * 0.4;
+        });
+        if (scroller.scrollTop !== oldScrollTop) noteManualScroll();
       } else seek(direction === "left" ? -10 : 10);
       return true;
     }
@@ -233,19 +264,21 @@
     var video = player();
     if (video && isFinite(video.duration)) {
       video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + delta));
+      tick(true, true);
     }
   }
   function media(action) {
     var video = player();
     if (action === "playpause" || action === "play" || action === "pause") {
       if (!video) return false;
-      if (action === "pause") { video.pause(); return true; }
+      if (action === "pause") { video.pause(); tick(true, true); stopClock(); return true; }
       if (action === "play" || video.paused) {
         var promise = video.play();
         if (promise && promise.catch) promise.catch(function () {
           if (status && visible()) status.textContent = "Select a song in Browse to start playback.";
         });
       } else video.pause();
+      if (video.paused) { tick(true, true); stopClock(); } else startClock();
       return true;
     }
     var button = document.querySelector(action === "next"
@@ -255,6 +288,19 @@
   }
   // Cursor edge scrolling: inspect only the ancestor chain under the pointer.
   // Fractions keep native pixels independent of CSS pixels and page scaling.
+  function instantScroll(element, action) {
+    if (!element) return action ? action() : undefined;
+    var previous = element.style.scrollBehavior;
+    element.style.scrollBehavior = 'auto';
+    try {
+      if (action) return action();
+      // An explicit instant write also cancels any in-flight browser scroll.
+      element.scrollTop = element.scrollTop;
+    } finally { element.style.scrollBehavior = previous; }
+  }
+  function noteManualScroll() {
+    if (visible() && lyrics && lyrics.renderer) lyrics.renderer.noteUserScroll(true);
+  }
   function scrollAt(x, y, dx, dy) {
     var node = document.elementFromPoint(Math.max(0, Math.min(innerWidth - 1, x * innerWidth)),
       Math.max(0, Math.min(innerHeight - 1, y * innerHeight)));
@@ -269,9 +315,11 @@
         var scrollY = sy && /(auto|scroll)/.test(style.overflowY) && element.scrollHeight > element.clientHeight;
         if (scrollX || scrollY) {
           var beforeX = element.scrollLeft, beforeY = element.scrollTop;
-          if (scrollX) element.scrollLeft += sx;
-          if (scrollY) element.scrollTop += sy;
-          if (element.scrollLeft !== beforeX || element.scrollTop !== beforeY) return true;
+          instantScroll(element, function () {
+            if (scrollX) element.scrollLeft += sx;
+            if (scrollY) element.scrollTop += sy;
+          });
+          if (element.scrollLeft !== beforeX || element.scrollTop !== beforeY) { noteManualScroll(); return true; }
         }
         element = element.parentElement;
       }
@@ -324,7 +372,7 @@
       var video = player();
       if (video && isFinite(video.duration)) video.currentTime = Math.max(0, Math.min(1000, Number(transportSeek.value) || 0)) * video.duration / 1000;
       updateTransport(true);
-      tick();
+      tick(true, true);
     });
     transportSeek.addEventListener('keydown', function (event) {
       if (event.key !== 'Home' && event.key !== 'End') return;
@@ -355,40 +403,68 @@
       transportPlay.setAttribute('aria-label', label); transportPlay.title = label;
       setIcon(transportPlay, video.paused ? 'play' : 'pause');
     }
+    if (!force && second === lastTransportSecond) return;
     var request = metadata();
     var trackStamp = request ? request.trackId + request.title + request.artist : '';
     if (!force && second === lastTransportSecond && trackStamp === lastTrackStamp) return;
     lastTransportSecond = second;
+    var trackChanged = trackStamp !== lastTrackStamp;
     lastTrackStamp = trackStamp;
-    transportTitle.textContent = request ? request.title : 'Now playing';
-    transportArtist.textContent = request ? request.artist : '';
+    var title = request ? request.title : 'Now playing', artist = request ? request.artist : '';
+    if (transportTitle.textContent !== title) transportTitle.textContent = title;
+    if (transportArtist.textContent !== artist) transportArtist.textContent = artist;
     transportTime.textContent = formatTime(video.currentTime) + ' / ' + formatTime(video.duration);
     transportSeek.value = String(Math.round(video.currentTime * 1000 / video.duration));
     transportSeek.setAttribute('aria-valuetext', formatTime(video.currentTime) + ' of ' + formatTime(video.duration));
     transportSeek.style.setProperty('--tv-progress', transportSeek.value / 10 + '%');
-    updateArtwork(false);
+    if (force || trackChanged || !lastArtwork) updateArtwork(false);
     syncLyricsToggle();
   }
   ['timeupdate', 'loadedmetadata', 'durationchange', 'play', 'pause', 'emptied'].forEach(function (name) {
     document.addEventListener(name, function (event) {
-      if (event.target === player()) updateTransport(name !== 'timeupdate');
+      if (event.target !== player()) return;
+      updateTransport(name !== 'timeupdate');
+      if (name === 'play' || name === 'loadedmetadata') startClock();
+      else if (name === 'pause' || name === 'emptied') { tick(true, true); stopClock(); }
+      else if (name !== 'timeupdate') tick(true);
     }, true);
   });
-  function tick() {
+  ['seeking', 'seeked', 'ended'].forEach(function (name) {
+    document.addEventListener(name, function (event) {
+      if (event.target === player()) {
+        updateTransport(true); tick(true, true);
+        if (name === 'ended') stopClock();
+      }
+    }, true);
+  });
+  function tick(force, instant) {
     if (!lyrics || !visible() || suspended || document.hidden) return;
     var video = player();
     var playing = !!video && !video.paused && !video.ended;
-    if (lyrics.playing !== playing) lyrics.playing = playing;
-    lyrics.currentTime = video && isFinite(video.currentTime) ? video.currentTime : 0;
+    var time = video && isFinite(video.currentTime) ? video.currentTime : 0;
+    if (!force && playing === lastLyricPlaying && time === lastLyricTime) return;
+    function update() {
+      if (lyrics.playing !== playing) lyrics.playing = playing;
+      lyrics.currentTime = time;
+    }
+    if (instant) instantScroll(scroller, update); else update();
+    lastLyricTime = time;
+    lastLyricPlaying = playing;
   }
   function stopClock() {
     if (timer !== null) clearInterval(timer);
     timer = null;
+    instantScroll(scroller);
     if (lyrics) lyrics.playing = false;
+    lastLyricPlaying = null;
   }
   function startClock() {
     stopClock();
-    if (visible() && !suspended && !document.hidden) { tick(); timer = setInterval(tick, 250); }
+    if (visible() && !suspended && !document.hidden) {
+      tick(true, true);
+      var video = player();
+      if (video && !video.paused && !video.ended) timer = setInterval(tick, 250);
+    }
   }
   function buildOverlay() {
     overlay = document.createElement("section");
@@ -410,6 +486,8 @@
     status.className = "tv-lyrics-status";
     scroller = document.createElement("div");
     scroller.className = "tv-lyrics-scroll";
+    scroller.addEventListener('wheel', noteManualScroll, { passive: true });
+    scroller.addEventListener('touchmove', noteManualScroll, { passive: true });
     plain = document.createElement("div");
     plain.className = "tv-plain-lyrics";
     emptyState = node('div', 'tv-lyrics-empty');
@@ -430,7 +508,7 @@
       var current = lyrics.querySelector('.blyrics--active');
       if (current) scroller.scrollTop += current.getBoundingClientRect().top
         - scroller.getBoundingClientRect().top - scroller.clientHeight * 0.3;
-      tick();
+      tick(true);
     });
     hint.append(lyricsFollow);
     overlay.append(top, lyricsBody, hint);
@@ -443,12 +521,16 @@
     // not turn it into an unupgraded HTMLUnknownElement.
     var LyricsElement = customElements.get("braccato-lyrics");
     lyrics = new LyricsElement();
-    lyrics.theme = window.BraccatoTV ? window.BraccatoTV.theme : "/* blyrics-letter-wave = false; */";
-    lyrics.tickOptions = { smoothScroll: false, followPausedSeeks: true };
+    lyrics.theme = (window.BraccatoTV ? window.BraccatoTV.theme : '/* blyrics-letter-wave = false; */')
+      + '\n/* blyrics-line-synced-animation-delay = 0; */';
+    // The WebView scrolls the viewport; per-line WAAPI motion is unnecessary.
+    lyrics.tickOptions = { smoothScroll: false, followPausedSeeks: true, countEveryUserScroll: true };
+    lastLyricTime = -1;
+    lastLyricPlaying = null;
     lyrics.host = { getScrollElement: function () { return scroller; } };
     lyrics.addEventListener("braccato:line-click", function (event) {
       var video = player();
-      if (video && isFinite(event.detail.timeS)) video.currentTime = event.detail.timeS;
+      if (video && isFinite(event.detail.timeS)) { video.currentTime = event.detail.timeS; tick(true, true); }
     });
     lyrics.addEventListener("braccato:error", function () {
       renderFailure = true;
@@ -542,7 +624,7 @@
       lyricsRetry.hidden = true;
       plain.remove();
       if (lyrics) lyrics.lyrics = [];
-      scroller.scrollTop = 0;
+      instantScroll(scroller, function () { scroller.scrollTop = 0; });
       heading.textContent = request.title;
       artistLabel.textContent = request.artist;
       status.textContent = "Finding lyrics…";
@@ -565,14 +647,18 @@
     emptyState.hidden = true;
     if (payload.status === "synced") {
       savedLyrics = parseLrc(payload.syncedLyrics, request.duration);
-      if (lyrics && savedLyrics.length && !renderFailure) { lyrics.lyrics = savedLyrics; tick(); }
+      if (lyrics && savedLyrics.length && !renderFailure) {
+        instantScroll(scroller, function () { lyrics.lyrics = savedLyrics; tick(true); });
+      }
       else { status.textContent = "Timed lyrics could not be displayed on this WebView."; emptyState.hidden = false; }
     } else if (payload.status === "plain") {
       savedPlain = String(payload.plainLyrics || "").slice(0, 200000);
       plain.textContent = savedPlain;
       scroller.appendChild(plain);
-      status.textContent = payload.timingMatched === false
-        ? "Lyrics by LRCLIB · Untimed: different recording" : "Lyrics by LRCLIB · Unsynced";
+      status.textContent = payload.syncedIncomplete
+        ? "Lyrics by LRCLIB · Full text: timing incomplete"
+        : payload.timingMatched === false
+          ? "Lyrics by LRCLIB · Untimed: different recording" : "Lyrics by LRCLIB · Unsynced";
     } else { status.textContent = payload.message || "Lyrics are unavailable for this recording."; emptyState.hidden = false; }
     lyricsRetry.hidden = payload.status === 'synced' || payload.status === 'plain' || payload.status === 'instrumental';
     if (renderFailure) lyricsRetry.hidden = false;

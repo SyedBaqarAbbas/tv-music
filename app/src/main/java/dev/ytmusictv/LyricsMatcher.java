@@ -65,6 +65,44 @@ final class LyricsMatcher {
         return TIMESTAMP.matcher(LRC_METADATA.matcher(synced).replaceAll("")).replaceAll("").trim();
     }
 
+    /** Reject contradictory timed samples, not legitimately sparse songs. */
+    static boolean incompleteSynced(String synced, String plain) {
+        if (synced.isEmpty() || plain.isEmpty()) return false;
+        long plainCharacters = 0, timedCharacters = 0;
+        int plainLines = 0, timedCues = 0;
+        for (String line : plain.split("\\r?\\n")) {
+            int characters = lyricCharacters(line);
+            if (characters > 0) { plainLines++; plainCharacters += characters; }
+        }
+        for (String line : LRC_METADATA.matcher(synced).replaceAll("").split("\\r?\\n")) {
+            Matcher stamps = TIMESTAMP.matcher(line);
+            int count = 0;
+            while (stamps.find()) count++;
+            if (count == 0) continue;
+            int characters = lyricCharacters(TIMESTAMP.matcher(line).replaceAll(""));
+            if (characters == 0) continue;
+            // [00:10][00:30]Chorus represents two vocal cues, not one line.
+            timedCues += count;
+            timedCharacters += (long) characters * count;
+        }
+        // Strong corroboration is required: the same record contains much more
+        // actual vocal text, not just alternate punctuation or line wrapping.
+        // Duration or a low cue count alone cannot disqualify an interlude.
+        return plainLines >= 6 && plainCharacters >= 120
+                && plainLines >= Math.max(3, timedCues * 2)
+                && timedCharacters * 2 < plainCharacters;
+    }
+
+    private static int lyricCharacters(String text) {
+        int characters = 0;
+        for (int offset = 0; offset < text.length();) {
+            int codePoint = text.codePointAt(offset);
+            offset += Character.charCount(codePoint);
+            if (Character.isLetterOrDigit(codePoint)) characters++;
+        }
+        return characters;
+    }
+
     static String normalize(String text) {
         String folded = Normalizer.normalize(text, Normalizer.Form.NFKD).toLowerCase(Locale.ROOT);
         StringBuilder result = new StringBuilder(folded.length());

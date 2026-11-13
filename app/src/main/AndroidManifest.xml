@@ -26,5 +26,11 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".SignInActivity"
+            android:label="Sign in to Music"
+            android:exported="false"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|uiMode"
+            android:screenOrientation="landscape" />
     </application>
 </manifest>

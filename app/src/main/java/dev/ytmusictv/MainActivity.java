@@ -56,6 +56,7 @@ import java.nio.charset.StandardCharsets;
 /** A single platform WebView and a small, remote-accessible native toolbar. */
 public final class MainActivity extends Activity {
     private static final String HOME = "https://music.youtube.com/";
+    private static final int SIGN_IN_REQUEST = 21;
     private static final int BACKGROUND = Color.rgb(16, 17, 22);
     private static final int SURFACE = Color.rgb(25, 26, 32);
     private static final int TEXT = Color.rgb(242, 238, 230);
@@ -74,6 +75,7 @@ public final class MainActivity extends Activity {
     private SharedPreferences preferences;
     private AlertDialog activeDialog;
     private boolean chromeExpanded;
+    private boolean signInPending;
     private Button lyricsButton;
     private Button retryButton;
     private LyricsRepository lyricsRepository;
@@ -97,6 +99,7 @@ public final class MainActivity extends Activity {
     private long pageGeneration;
     private long lyricsGeneration;
     private String currentLyricsKey = "";
+    private String deliveredLyricsKey = "";
     private String injectionScript;
 
     private final Runnable lyricsPoll = new Runnable() {
@@ -135,7 +138,7 @@ public final class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         cursorOverlay = new CursorOverlayView(this);
         webContainer.addView(cursorOverlay, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                cursorOverlay.getCursorViewSize(), cursorOverlay.getCursorViewSize(), Gravity.TOP | Gravity.LEFT));
 
         toolbar = new LinearLayout(this);
         toolbar.setOrientation(LinearLayout.HORIZONTAL);
@@ -461,8 +464,10 @@ public final class MainActivity extends Activity {
         if (isMusicUrl(uri)) return false;
         if ("https".equalsIgnoreCase(uri.getScheme()) && uri.getHost() != null) {
             String host = uri.getHost().toLowerCase(java.util.Locale.ROOT);
-            if (host.equals("accounts.google.com") || host.endsWith(".accounts.google.com")) {
-                showAccount(uri);
+            if ((host.equals("accounts.google.com") || host.endsWith(".accounts.google.com")
+                    || host.equals("accounts.google.com.pk"))
+                    && SignInActivity.NavigationPolicy.allowed(uri.toString())) {
+                openSignIn(uri);
             } else {
                 showDialog(dialogBuilder("Open in browser")
                         .setMessage("This link opens in the TV browser.")
@@ -549,6 +554,7 @@ public final class MainActivity extends Activity {
         lyricsButton.setText(visible ? "Lyrics on" : "Lyrics");
         lyricsGeneration++;
         currentLyricsKey = "";
+        deliveredLyricsKey = "";
         pollInFlight = false;
         handler.removeCallbacks(lyricsPoll);
         if (canPollLyrics()) handler.post(lyricsPoll);
@@ -580,6 +586,7 @@ public final class MainActivity extends Activity {
                 if (metadata == null) {
                     if (!currentLyricsKey.isEmpty()) {
                         currentLyricsKey = "";
+                        deliveredLyricsKey = "";
                         lyricsGeneration++;
                     }
                     return;
@@ -593,7 +600,11 @@ public final class MainActivity extends Activity {
                             || expectedPage != pageGeneration || requestGeneration != lyricsGeneration
                             || !key.equals(currentLyricsKey)) return;
                     // Payload is JSON data; never interpolate unquoted remote lyric text into JavaScript.
-                    callScript("receiveLyrics(JSON.parse(" + jsString(payload.toString()) + "))", null);
+                    callScript("receiveLyrics(JSON.parse(" + jsString(payload.toString()) + "))", accepted -> {
+                        if ("true".equals(accepted) && webView == expectedView
+                                && expectedPage == pageGeneration && requestGeneration == lyricsGeneration
+                                && key.equals(currentLyricsKey)) deliveredLyricsKey = key;
+                    });
                 });
             } catch (JSONException ignored) {
                 // A transient incomplete player snapshot will be retried on the next one-second tick.
@@ -913,7 +924,7 @@ public final class MainActivity extends Activity {
         items.setOrientation(LinearLayout.VERTICAL);
         items.setPadding(dp(20), dp(8), dp(20), dp(12));
         AlertDialog menu = dialogBuilder("More").setView(items).setNegativeButton("Close", null).create();
-        String[] labels = {"Reload player", "Remote guide", "Account"};
+        String[] labels = {"Reload player", "Remote guide", "Account", "Open YouTube"};
         for (int i = 0; i < labels.length; i++) {
             final int action = i;
             Button item = makeButton(labels[i]);
@@ -925,7 +936,8 @@ public final class MainActivity extends Activity {
                 menu.dismiss();
                 if (action == 0) retry();
                 else if (action == 1) showHelp();
-                else showAccount(null);
+                else if (action == 2) showAccount(null);
+                else openYouTube();
             });
         }
         showDialog(menu, () -> items.getChildAt(0).requestFocus());
@@ -935,10 +947,33 @@ public final class MainActivity extends Activity {
         setChromeExpanded(false, false);
         Uri browserUrl = requestedUrl == null ? Uri.parse(HOME) : requestedUrl;
         showDialog(dialogBuilder("Your account")
-                .setMessage("Google blocks sign-in inside embedded players. Listen here as a guest, or open YouTube and choose Music to use your Google account. Your lyrics view stays in this app.\n\nBrowser sign-in stays in the browser and does not sign this app in.")
+                .setMessage("Sign in on Google's page to use your account in this app. You can also keep listening as a guest.\n\nAn external browser has its own session; signing in there does not sign this app in.")
                 .setNegativeButton("Keep listening", null)
                 .setNeutralButton("Open browser", (dialog, which) -> openExternal(browserUrl))
-                .setPositiveButton("Open YouTube", (dialog, which) -> openYouTube()).create(), null);
+                .setPositiveButton("Sign in here", (dialog, which) -> openSignIn(requestedUrl)).create(), null);
+    }
+
+    @SuppressWarnings("deprecation")
+    private void openSignIn(Uri requestedUrl) {
+        if (signInPending || destroyed) return;
+        String url = requestedUrl == null ? SignInActivity.SIGN_IN : requestedUrl.toString();
+        if (!SignInActivity.NavigationPolicy.allowed(url)) url = SignInActivity.SIGN_IN;
+        signInPending = true;
+        setChromeExpanded(false, false);
+        Intent intent = new Intent(this, SignInActivity.class);
+        // Keep redirect queries inside the explicit activity extra, never a log or URL label.
+        intent.putExtra(SignInActivity.EXTRA_START_URL, url);
+        startActivityForResult(intent, SIGN_IN_REQUEST);
+    }
+
+    @SuppressWarnings("deprecation")
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != SIGN_IN_REQUEST) return;
+        signInPending = false;
+        // RESULT_OK means the sign-in view returned to Music, not that an account
+        // was verified. The official page determines the actual signed-in state.
+        if (resultCode == RESULT_OK) retry();
     }
 
     private void openYouTube() {
@@ -1029,7 +1064,10 @@ public final class MainActivity extends Activity {
         hideCursor();
         handler.removeCallbacks(lyricsPoll);
         lyricsGeneration++;
-        currentLyricsKey = "";
+        // Retain an accepted result already present in the page. Re-sending it
+        // on resume would tear down and rebuild every lyric line unnecessarily.
+        // An interrupted request still needs to be requested again on resume.
+        if (!currentLyricsKey.equals(deliveredLyricsKey)) currentLyricsKey = "";
         pollInFlight = false;
         callScript("suspend()", null);
         if (webView != null) webView.onPause();

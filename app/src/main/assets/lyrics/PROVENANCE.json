@@ -10,11 +10,49 @@
   "buildTool": "esbuild 0.25.12",
   "javascriptSyntaxTarget": "Chrome 80",
   "source": "Published npm package, verified by package-lock.json integrity during npm ci",
-  "modifications": "Unmodified renderer plus local built-in shims and conservative TV theme",
+  "modifications": "Local built-in shims, conservative TV theme, explicit manual-scroll override and legacy website animation-effect compatibility patches",
+  "patches": [
+    {
+      "id": "force-explicit-manual-scroll-v1",
+      "api": "renderer.noteUserScroll(force = false)",
+      "behavior": "When force is true, intentional manual input bypasses the upstream engine-scroll event budget; omitted or false preserves upstream behavior.",
+      "application": "Exact source snippets in rebuild.mjs; rebuild fails unless every snippet occurs exactly once.",
+      "files": [
+        {
+          "path": "engine/userScroll.js",
+          "upstreamSha256": "9ddb5c7458c3941fa80edb7d6439f9ca2b6999c6cda08f5d51f332f8571f3f3d",
+          "patchedSha256": "63c7cad186f55da4fe61bc4aa7eca7edba3cae0fec92bbf42cbac0f5d92416b4"
+        },
+        {
+          "path": "renderer.js",
+          "upstreamSha256": "4f1b45b1dfa93df8b0b2098d6fa79252579176711c14e9b9f5664ba6302699ed",
+          "patchedSha256": "38359b18ef97badf60a07450b9a49f222a55d75fdf7012e4efcacce3dafec9c4"
+        },
+        {
+          "path": "types.d.ts",
+          "upstreamSha256": "fa5f339bad544cf694dff3ec4110597c911d97a0d538e1e5f7f198602b1dc1a9",
+          "patchedSha256": "866ce0e010b3eff84b220ed0b35134be213d427dd311678044ee0de154f7aa9f"
+        }
+      ]
+    },
+    {
+      "id": "skip-drift-sampling-for-legacy-animation-effects-v1",
+      "api": "Internal drift sampling compatibility",
+      "behavior": "Skip optional animation drift samples when a website animation polyfill supplies an effect without getComputedTiming; native effects retain upstream timing behavior.",
+      "application": "Exact source snippets in rebuild.mjs; rebuild fails unless every snippet occurs exactly once.",
+      "files": [
+        {
+          "path": "engine/animationTiming.js",
+          "upstreamSha256": "199def313c74969112cfd1f73d98f766cb658081fcfdd6625bb64ddd37a57fab",
+          "patchedSha256": "2db4d5b8b06a182ee520d2b7a79e650e66468e350a4123e478a1bf5b16f237a0"
+        }
+      ]
+    }
+  ],
   "files": {
     "core.js": {
-      "bytes": 104027,
-      "sha256": "213e6e30d7216191b5ead52dcd02ce3c06af3be134ef85cbd35cdc2f5a0d3b43"
+      "bytes": 104115,
+      "sha256": "2befdd7249f899d2f1470047fd593e25e79997bffd2e4c4b89a41f14651d5a30"
     },
     "core.css": {
       "bytes": 18605,

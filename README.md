@@ -2,11 +2,11 @@
 
 An experimental standalone Android TV launcher for the YouTube Music website, with remote navigation and the actual Better Lyrics renderer, [Braccato](https://github.com/better-lyrics/braccato). Initial hardware target: your TCL Android TV 11, firmware `V8-R51AT01-LF1V126.020732`.
 
-Version 0.3 adds a warm charcoal interface, a collapsible command strip, an artwork-and-lyrics listening room, and compact playback controls. It has been installed and visually reviewed on your TCL. It remains an experimental player; extended performance and compatibility testing is still needed. Google sign-in in embedded WebViews is unsupported; opening a browser does not transfer its session into this app. There is no official standalone YouTube Music playback API integrated here.
+Version 0.5 adds an in-app Google account window using the player's normal WebView profile. Sign-in was completed on this TCL with the unchanged system user agent, then verified in the actual player alongside synchronized lyrics. The charcoal interface includes a collapsible command strip, artwork-and-lyrics listening room, native lyric glides, and compact playback controls. Cursor movement and paused work are kept small, and incomplete timed lyric fragments fall back to full text. This remains an experimental website-based player; extended performance and compatibility testing is still needed. There is no standalone YouTube Music playback API integrated here.
 
 ## Lightweight development
 
-The app uses Java, platform Android views, and one system WebView. No Compose, React, Electron, or bundled browser. Gradle runs one worker with a 1 GB heap and stops after the build. That is a JVM heap limit, not a limit on total system RAM. Android 8.0+ is the initial minimum; your TV runs Android 11. An updated Android System WebView is needed; the bundled JavaScript targets Chrome 80 syntax, which is not a guarantee that the current YouTube Music site supports that engine.
+The app uses Java, platform Android views, one playback WebView, and a temporary account WebView that is destroyed on return. No Compose, React, Electron, or bundled browser. Gradle runs one worker with a 1 GB heap and stops after the build. That is a JVM heap limit, not a limit on total system RAM. Android 8.0+ is the initial minimum; your TV runs Android 11. An updated Android System WebView is needed; the bundled JavaScript targets Chrome 80 syntax, which is not a guarantee that the current YouTube Music site supports that engine.
 
 Try the offline UI without Android tools:
 
@@ -43,14 +43,18 @@ The app also appears in the TV launcher. The directional pad moves a visible cur
 
 Lyrics, or the lyrics icon in the playback strip, opens the listening room; Back returns to browsing. Previous, Play/Pause, Next, the seek rail, and elapsed/total times remain visible. Clicking a timed lyric seeks to that line; Follow song restores automatic scrolling after browsing lyrics manually. Missing or failed lyrics have a Try again action. Artwork has a local fallback and uses modest thumbnail sizes.
 
-Account explains the sign-in limitation and can launch the installed official YouTube TV app, where choosing Music provides Google's account experience. That app runs separately from this lyrics view. Browser-sign-in experimentation is deferred; no user-agent disguise, credential collection, or cookie importing is implemented.
+Account → Sign in here opens Google's HTTPS pages in an account window with the current origin and path visible. Use the remote cursor and TV keyboard; Cancel returns to the player. When the account window returns to Music, it closes and refreshes the player's Home page using the same normal WebView cookie profile. The music website determines the signed-in state; a completed navigation alone is not treated as proof of login.
+
+The account window uses the unmodified system user agent, no injected script or JavaScript bridge, and no credential reading or cookie export/import. Its navigation permits HTTPS Google/YouTube pages and the exact regional host `accounts.google.com.pk`, which this TV's sign-in flow uses. Query strings and fragments are omitted from address labels and diagnostic logs. The external browser option keeps its own separate session. More → Open YouTube launches the official TV app separately.
 
 ## Lyrics and resource limits
 
 - Braccato 1.21.5 is bundled locally, approximately 104 KB JavaScript and 19 KB CSS before APK compression. Its MIT license and reproducible build are included; the GPL Chrome extension itself is not copied.
-- The TV theme disables letter wave, glow, wobble, and complex scroll effects. The display samples the actual media clock four times per second while visible. It disconnects the renderer and stops the clock when closed. The cursor redraws only on input; the playback strip uses video events and does not introduce an idle timer.
+- The TV theme disables letter wave, glow, wobble, full-line opacity fades, and per-line scroll animations. Supported WebViews use native smooth scrolling and a small gold marker; reduced-motion preferences and unsupported browsers use instant following. Seeks and explicit cursor scrolling stay immediate. Manual scrolling pauses following until Follow song or the renderer's 25-second timeout.
+- The display samples the actual media clock four times per second only while lyrics are visible and the player is running. Paused seeks update from events. Closing lyrics disconnects the renderer; pausing or backgrounding stops its clock and pending scroll. Already-delivered lyrics survive activity pause/resume. The playback strip uses video events and no idle timer; a cached 25dp cursor moves through native view transforms.
+- The opaque lyrics screen skips rendering the covered YouTube Music page while retaining its media/session state. Browsing restores the site. Connected player/metadata nodes are cached, and unchanged lyric times avoid renderer writes.
 - A native network worker fetches lyrics from [LRCLIB](https://lrclib.net/docs). It tries an exact match, a cleaned title/artist lookup, and a filtered search when needed: at most three sequential requests. It sends the song title, artist, album if known, and duration. There is one worker, one queued request, eight cached tracks, and a 256 KB response limit. Errors and missing lyrics have explicit states; rate-limit cooldowns are honored. A recording whose duration differs by more than three seconds is shown as untimed lyrics, rather than guessing its timing.
-- This first provider uses line-synced LRC, or plain lyrics when timing is absent. Word timing, translations, and account/library access are not implemented. A matching recording is not always available.
+- This first provider uses line-synced LRC, or plain lyrics when timing is absent. Contradictory partial timing is checked against the same record's fuller vocal text; remaining bounded lookups can find complete compatible timing, otherwise the full text is clearly marked as untimed. Sparse songs are not rejected from cue count or duration alone. Word timing, translations, and a native library API are not implemented; signed-in library browsing is provided by the music website. A matching recording is not always available.
 - YouTube Music controls the media it serves. Using its site can still load video and consume substantial memory; a small APK alone does not establish low runtime memory use. Website markup changes may require adapting the remote/metadata selectors.
 
 ## Validation
@@ -60,6 +64,8 @@ node --test tests/*.test.cjs
 node --check app/src/main/assets/tv.js
 ./scripts/check-java.sh
 ./scripts/check-matcher.sh
+./scripts/check-provider.sh
+./scripts/check-sign-in.sh
 python3 scripts/check-browser.py
 ```
 
@@ -67,9 +73,15 @@ Parser checks cover repeated timestamps, offsets, instrumental gaps, malformed t
 
 Hardware checks on this TCL use Android TV 11 and Android System WebView 157. The visible cursor and complete playback strip have been observed on-device; aespa's LEMONADE lyrics were fetched and rendered. YouTube's ES5 custom-element adapter requires constructing Braccato's registered class directly, rather than using `document.createElement` for that tag.
 
-The 0.3 review includes 134 Firefox checks, four parser tests, 25 matching checks, Android compilation, and Android lint. Physical TV checks cover collapsed/expanded controls, Search and cancellation, playback-preserving Search/Home, Play/Pause, Next/Previous, seeking and lyric-line seeks, artwork, lyrics open/close, Home/resume, the Account/More/Remote guide dialogs, and network error/retry recovery. Untimed and error lyric presentations were also injected as controlled fixtures, visually reviewed, and restored through the real native lyric lookup. This does not certify Google account sign-in or every upstream website variation.
+The 0.3 review includes 134 Firefox checks, four parser tests, 25 matching checks, Android compilation, and Android lint. Physical TV checks cover collapsed/expanded controls, Search and cancellation, playback-preserving Search/Home, Play/Pause, Next/Previous, seeking and lyric-line seeks, artwork, lyrics open/close, Home/resume, the Account/More/Remote guide dialogs, and network error/retry recovery. Untimed and error lyric presentations were also injected as controlled fixtures, visually reviewed, and restored through the real native lyric lookup. That earlier review did not cover Google account sign-in or every upstream website variation.
 
 The TV review caught a host-page CSS sizing mismatch, an unwanted before-unload prompt during Search, and the initial dialog focus indicator; these were corrected. Local screenshots and JSON check reports are under ignored `.tools/design-qa/`.
+
+The 0.4 browser review passes 173 Firefox checks, including native motion, reduced-motion and capability fallbacks, immediate manual scrolling after engine scrolling, Follow recovery, paused clock cleanup, and preserved renderer DOM. A fixture reproducing YouTube Music's missing animation timing method also verifies Follow, paused seeks, and zero caught renderer exceptions. Matching checks cover incomplete timing corroboration, and provider policy checks cover full-text fallback, recording duration, and conflicting instrumental flags. A live LRCLIB record for Hearts2Hearts' Pretty Please contained one timed opening cue and 86 lines of plain text; this is now treated as incomplete timing rather than a complete synchronized song.
+
+The 0.5 account flow has 31 focused navigation/redaction checks. Hardware testing completed direct Google sign-in with the system identity, verified `LOGGED_IN` in the actual player after a page reload and a cold restart following the 0.5 upgrade, opened the signed-in Library, and rendered all 93 LEMONADE lyric lines during playback. The normal Account flow returned automatically to Music; Cancel preserved the existing player page. The original diagnostic hang was our navigation filter blocking Google's regional `/accounts/SetSID` redirect, not a captured crash or ANR. External TCL-browser sign-in was also verified, but did not transfer to the player. The production activity accepts the exact regional host and logs no redirect query values.
+
+Short TCL playback samples of LEMONADE around 32–43 seconds measured 0.53 seconds of JavaScript execution before these changes and 0.39 seconds in the final compatible build, over ten seconds each. Overall main-thread task time was 4.04 versus 4.45 seconds and frame pacing remained variable, so these samples do not establish an overall frame-rate improvement. They include profiling overhead and are not sustained results. Per-line motion, full-line fades, and even the decorative marker transition cost more on this TV, so the final design uses native scrolling and a static marker. Raw local samples are in `.tools/performance/`.
 
 For sustained performance validation, run 15–30 minutes of playback and inspect memory and frame statistics:
 
@@ -80,4 +92,4 @@ For sustained performance validation, run 15–30 minutes of playback and inspec
 
 WebView rendering also runs in a separate process, so include its memory when profiling. Sustained TV RAM and frame-rate results have not been recorded yet.
 
-Google documents its [restriction on embedded sign-in](https://developers.google.com/identity/siwg/best-practices). Android documents [TV remote and launcher requirements](https://developer.android.com/training/tv/get-started/create) and the [pinned build-tool compatibility](https://developer.android.com/build/releases/agp-8-7-0-release-notes).
+Google documents its [sign-in browser requirements](https://developers.google.com/identity/siwg/best-practices). Android documents [TV remote and launcher requirements](https://developer.android.com/training/tv/get-started/create) and the [pinned build-tool compatibility](https://developer.android.com/build/releases/agp-8-7-0-release-notes).

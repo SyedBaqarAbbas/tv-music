@@ -31,8 +31,8 @@ window.__media={time:3,duration:180,paused:false,ended:false,plays:0,pauses:0};
 window.__session={metadata:null};Object.defineProperty(navigator,'mediaSession',{configurable:true,value:window.__session});
 const video=document.querySelector('video');
 Object.defineProperties(video,{duration:{get:()=>__media.duration},currentTime:{get:()=>__media.time,set:v=>__media.time=v},paused:{get:()=>__media.paused},ended:{get:()=>__media.ended}});
-video.play=function(){__media.paused=false;__media.plays++;return Promise.resolve()};
-video.pause=function(){__media.paused=true;__media.pauses++};
+video.play=function(){const changed=__media.paused;__media.paused=false;__media.plays++;if(changed)video.dispatchEvent(new Event('play'));return Promise.resolve()};
+video.pause=function(){const changed=!__media.paused;__media.paused=true;__media.pauses++;if(changed)video.dispatchEvent(new Event('pause'))};
 Array.prototype.at=undefined;Array.prototype.findLast=undefined;Object.hasOwn=undefined;String.prototype.replaceAll=undefined;
 '''
 css=(root/'lyrics/core.css').read_text()+'\n'+(root/'tv.css').read_text()
@@ -45,6 +45,7 @@ tests=r'''
  const status=()=>document.querySelector('.tv-lyrics-status').textContent;
  const view=()=>document.querySelector('braccato-lyrics');
  const scroller=()=>document.querySelector('.tv-lyrics-scroll');
+ const setScrollInstantly=(element,top)=>{const previous=element.style.scrollBehavior;element.style.scrollBehavior='auto';element.scrollTop=top;element.style.scrollBehavior=previous;};
  const payload=(request,extra)=>Object.assign({},request,extra);
  function track(title,artist,id){document.querySelector('ytmusic-player-bar .title').textContent=title;document.querySelector('ytmusic-player-bar .byline a').textContent=artist;document.querySelector('ytmusic-player-bar .title').setAttribute('href','/watch?v='+id)}
  try {
@@ -83,6 +84,22 @@ tests=r'''
  check('Follow song resumes renderer autoscroll',resumed===1,resumed);
  __media.time=3;await delay(320);
  check('clock follows video playback',view().currentTime===3&&view().playing&&window.__intervals.size===1,{time:view().currentTime,playing:view().playing,intervals:window.__intervals.size});
+ const stableView=view(),stableContainer=stableView.renderer.container;
+ const elementProto=Object.getPrototypeOf(stableView),timeProperty=Object.getOwnPropertyDescriptor(elementProto,'currentTime'),playingProperty=Object.getOwnPropertyDescriptor(elementProto,'playing');
+ let timeWrites=0,playingWrites=0;
+ Object.defineProperty(stableView,'currentTime',{configurable:true,get(){return timeProperty.get.call(this)},set(value){timeWrites++;timeProperty.set.call(this,value)}});
+ Object.defineProperty(stableView,'playing',{configurable:true,get(){return playingProperty.get.call(this)},set(value){playingWrites++;playingProperty.set.call(this,value)}});
+ TvMusic.media('pause');const pausedWrites=[timeWrites,playingWrites];await delay(320);
+ check('paused overlay has no active clock timer',window.__intervals.size===0,window.__intervals.size);
+ check('paused overlay does not rewrite renderer properties',timeWrites===pausedWrites[0]&&playingWrites===pausedWrites[1],{before:pausedWrites,after:[timeWrites,playingWrites]});
+ TvMusic.media('play');const unchangedWrites=[timeWrites,playingWrites];await delay(550);
+ check('playing unchanged clock does not rewrite renderer properties',timeWrites===unchangedWrites[0]&&playingWrites===unchangedWrites[1],{before:unchangedWrites,after:[timeWrites,playingWrites]});
+ __media.time=3.25;const changedWrites=timeWrites;await delay(320);
+ check('changed playback time produces only one renderer time write',timeWrites===changedWrites+1,{before:changedWrites,after:timeWrites});
+ TvMusic.media('pause');__media.time=5;video.dispatchEvent(new Event('seeked'));
+ check('paused seek updates lyrics without restarting clock',stableView.currentTime===5&&!stableView.playing&&window.__intervals.size===0,{time:stableView.currentTime,playing:stableView.playing,intervals:window.__intervals.size});
+ TvMusic.media('play');
+ check('pause and resume preserve renderer and lyric DOM',view()===stableView&&view().renderer.container===stableContainer);
  const oldClock=view().currentTime;
  check('explicit pause handled',TvMusic.media('pause')===true&&__media.paused);
  check('explicit play handled',TvMusic.media('play')===true&&!__media.paused);
@@ -179,8 +196,8 @@ tests=r'''
  check('visible restarts single clock',window.__intervals.size===1);
  TvMusic.suspend();const suspendedView=view(),suspendedTime=suspendedView.currentTime;__media.time=70;await delay(320);
  check('suspend pauses media and stops clock',__media.paused&&window.__intervals.size===0&&!suspendedView.playing&&suspendedView.currentTime===suspendedTime,{paused:__media.paused,intervals:window.__intervals.size,playing:suspendedView.playing});
- TvMusic.resume();check('resume restarts one clock',window.__intervals.size===1);
- scroller().scrollTop=0;
+ TvMusic.resume();check('resume while media remains paused keeps clock stopped',window.__intervals.size===0,window.__intervals.size);
+ setScrollInstantly(scroller(),0);
  check('overlay D-pad up at top yields toolbar',TvMusic.move('up')===false);
  __media.time=5;TvMusic.move('left');check('left seek clamps to zero',__media.time===0);
  TvMusic.move('right');check('right seek advances ten seconds',__media.time===10);
@@ -204,10 +221,30 @@ tests=r'''
  TvMusic.toggleLyrics();
  const current=TvMusic.getLyricsRequest();
  TvMusic.receiveLyrics(payload(current,{status:'plain',plainLyrics:Array.from({length:80},(_,i)=>'Original scroll fixture line '+i).join('\n')}));
- scroller().scrollTop=0;
+ setScrollInstantly(scroller(),0);
  const lyricBox=scroller().getBoundingClientRect();
+ const scrollEngine=view().renderer,originalNote=scrollEngine.noteUserScroll;let manualScrollNotes=0;
+ scrollEngine.noteUserScroll=function(){manualScrollNotes++;};
  const lyricScroll=TvMusic.scrollAt((lyricBox.left+lyricBox.width/2)/innerWidth,(lyricBox.top+lyricBox.height/2)/innerHeight,0,0.3);
  check('cursor scroll reaches lyrics scroller',lyricScroll===true&&scroller().scrollTop>0,scroller().scrollTop);
+ check('actual cursor scrolling pauses renderer autoscroll',manualScrollNotes===1,manualScrollNotes);
+ setScrollInstantly(scroller(),scroller().scrollHeight-scroller().clientHeight);
+ const boundaryScroll=TvMusic.scrollAt((lyricBox.left+lyricBox.width/2)/innerWidth,(lyricBox.top+lyricBox.height/2)/innerHeight,0,0.3);
+ check('scrolling at a boundary does not pause autoscroll again',boundaryScroll===false&&manualScrollNotes===1,{boundaryScroll,manualScrollNotes});
+ scrollEngine.noteUserScroll=originalNote;
+ const timedFixture=Array.from({length:24},(_,i)=>'['+String(Math.floor(i*3/60)).padStart(2,'0')+':'+String(i*3%60).padStart(2,'0')+']Original timed fixture line '+i).join('\n');
+ TvMusic.receiveLyrics(payload(TvMusic.getLyricsRequest(),{status:'synced',syncedLyrics:timedFixture}));
+ TvMusic.media('play');__media.time=18;video.dispatchEvent(new Event('seeked'));
+ const forcedEngine=view().renderer,forcedContainer=forcedEngine.container;
+ forcedEngine.noteUserScroll();
+ check('default renderer scroll note retains upstream event-budget behavior',!forcedContainer.classList.contains('blyrics-user-scrolling'));
+ const timedBox=scroller().getBoundingClientRect(),beforeFirstManual=scroller().scrollTop;
+ const firstManual=TvMusic.scrollAt((timedBox.left+timedBox.width/2)/innerWidth,(timedBox.top+timedBox.height/2)/innerHeight,0,0.2);
+ check('first explicit scroll immediately pauses following after recent auto-follow',firstManual===true&&scroller().scrollTop!==beforeFirstManual&&forcedContainer.classList.contains('blyrics-user-scrolling'),{firstManual,before:beforeFirstManual,after:scroller().scrollTop,userScrolling:forcedContainer.classList.contains('blyrics-user-scrolling')});
+ document.querySelector('[aria-label="Follow current lyric"]').click();
+ check('Follow clears manual-scroll state immediately',!forcedContainer.classList.contains('blyrics-user-scrolling'));
+ __media.time=24;video.dispatchEvent(new Event('timeupdate'));await delay(320);
+ check('automatic lyric following continues after Follow',view().currentTime===24&&view().querySelector('.blyrics--active').textContent.includes('fixture line 8'));
  __media.duration=NaN;
  check('unready recording produces no lyric request',TvMusic.getLyricsRequest()===null);
  check('unready recording clears old lyrics and identity',view().querySelectorAll('.blyrics--line').length===0&&!scroller().querySelector('.tv-plain-lyrics')&&document.querySelector('.tv-song-identity h1').textContent==='Nothing playing');
@@ -229,10 +266,79 @@ tests=r'''
  }catch(error){results.push({name:'uncaught integration error',pass:false,detail:error.stack})}
  document.body.innerHTML='<pre>'+JSON.stringify(results,null,2)+'</pre>';
  await fetch('/results/integration',{method:'POST',body:JSON.stringify(results)});
- window.location.href='/__preview';
+ window.location.href='/__legacy-effect';
 })();
 '''
 html='''<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0;background:#111;color:white;font:24px sans-serif} .cards{position:absolute;top:20px;left:30px;display:flex;gap:40px}.cards a{display:block;width:180px;height:100px;background:#344;padding:20px;color:white} ytmusic-player-bar{position:absolute;left:30px;top:500px}video{width:2px;height:2px;position:absolute;right:0;bottom:0}</style></head><body><div class="cards"><a href="#one">First card</a><a href="#two">Second card</a></div><ytmusic-player-bar><a class="title" href="/watch?v=first">Test song</a><span class="byline"><a>Test artist</a></span></ytmusic-player-bar><video class="html5-main-video"></video><script src="/setup.js"></script><script src="/injected.js"></script><script src="/tests.js"></script></body></html>'''
+legacy_effect_setup=r'''
+window.__legacyEffects=0;
+const originalAnimate=Element.prototype.animate;
+Element.prototype.animate=function(keyframes,options){
+ const animation=originalAnimate.call(this,keyframes,options),effect=animation.effect;
+ const partialEffect={target:effect.target,getKeyframes:effect.getKeyframes.bind(effect),getTiming:effect.getTiming.bind(effect)};
+ Object.defineProperty(animation,'effect',{configurable:true,value:partialEffect});
+ window.__legacyEffects++;return animation;
+};
+'''
+legacy_effect_tests=r'''
+(async function(){
+ const results=[],errors=[],check=(name,pass,detail)=>results.push({name,pass:!!pass,detail});
+ try{
+  TvMusic.toggleLyrics();const view=document.querySelector('braccato-lyrics');
+  view.host={...view.host,log(...args){if(args.some(value=>value instanceof Error)||String(args[0]).includes('Error in lyrics tick'))errors.push(args.map(String).join(' '))}};
+  const request=TvMusic.getLyricsRequest();
+  const syncedLyrics=Array.from({length:24},(_,i)=>'['+String(Math.floor(i*3/60)).padStart(2,'0')+':'+String(i*3%60).padStart(2,'0')+']Legacy effect fixture line '+i).join('\n');
+  TvMusic.receiveLyrics({...request,status:'synced',syncedLyrics});
+  __media.time=18;video.dispatchEvent(new Event('seeked'));TvMusic.media('pause');
+  check('fixture provides animation effects without getComputedTiming',window.__legacyEffects>0,window.__legacyEffects);
+  check('partial animation effects do not break paused seeks',view.currentTime===18&&view.querySelector('.blyrics--active').textContent.includes('fixture line 6'));
+  const scroller=document.querySelector('.tv-lyrics-scroll'),box=scroller.getBoundingClientRect();
+  check('partial-effect renderer accepts manual scrolling',TvMusic.scrollAt((box.left+box.width/2)/innerWidth,(box.top+box.height/2)/innerHeight,0,0.2)===true&&view.renderer.container.classList.contains('blyrics-user-scrolling'));
+  document.querySelector('[aria-label="Follow current lyric"]').click();
+  check('Follow clears manual state despite partial animation effects',!view.renderer.container.classList.contains('blyrics-user-scrolling'));
+  __media.time=24;video.dispatchEvent(new Event('seeked'));
+  check('later paused seeks still activate correct lyric',view.currentTime===24&&view.querySelector('.blyrics--active').textContent.includes('fixture line 8'));
+  check('partial-effect paused flow keeps clock stopped',window.__intervals.size===0,window.__intervals.size);
+  check('renderer reports no hidden tick exceptions for partial effects',errors.length===0,errors);
+  TvMusic.back();
+ }catch(error){results.push({name:'uncaught partial-effect error',pass:false,detail:error.stack})}
+ await fetch('/results/legacy-effect',{method:'POST',body:JSON.stringify(results)});
+ location.href='/__capability?unsupported';
+})();
+'''
+legacy_effect_html=html.replace('<script src="/injected.js">','<script src="/legacy-effect-setup.js"></script><script src="/injected.js">').replace('/tests.js','/legacy-effect-tests.js')
+capability_setup=r'''
+if(location.search.includes('unsupported')){
+ const original=CSS.supports.bind(CSS);
+ CSS.supports=function(property,value){return property==='scroll-behavior'?false:original(property,value)};
+}else{
+ const original=window.matchMedia.bind(window);
+ window.matchMedia=function(query){
+  if(!query.includes('prefers-reduced-motion'))return original(query);
+  return {matches:true,media:query,addEventListener(){},removeEventListener(){},addListener(){},removeListener(){}};
+ };
+}
+'''
+capability_tests=r'''
+(async function(){
+ const results=[],check=(name,pass,detail)=>results.push({name,pass:!!pass,detail});
+ const mode=location.search.includes('unsupported')?'unsupported':'reduced';
+ try{
+  TvMusic.toggleLyrics();const request=TvMusic.getLyricsRequest();
+  TvMusic.receiveLyrics({...request,status:'synced',syncedLyrics:'[00:00]Opening line\n[00:02]Current line\n[00:08]Following line'});
+  const view=document.querySelector('braccato-lyrics');
+  check('fallback disables smooth-capability class',!document.documentElement.classList.contains('tv-smooth-lyrics'));
+  check('fallback keeps instant native scrolling',getComputedStyle(document.querySelector('.tv-lyrics-scroll')).scrollBehavior==='auto');
+  check('fallback disables per-line scroll animations',getComputedStyle(view.renderer.container).getPropertyValue('--blyrics-animate-scroll').trim()==='0');
+  check('fallback still renders timed active lyrics',view.status==='rendering'&&view.querySelector('.blyrics--active'));
+  check('fallback does not build per-letter animation DOM',!view.querySelector('.blyrics--letter'));
+  TvMusic.back();check('fallback clock stops when lyrics close',window.__intervals.size===0,window.__intervals.size);
+ }catch(error){results.push({name:'uncaught capability error',pass:false,detail:error.stack})}
+ await fetch('/results/'+mode,{method:'POST',body:JSON.stringify(results)});
+ location.href=mode==='unsupported'?'/__capability?reduced':'/__preview';
+})();
+'''
+capability_html=html.replace('<script src="/injected.js">','<script src="/capability-setup.js"></script><script src="/injected.js">').replace('/tests.js','/capability-tests.js')
 preview_tests=r'''
 (async function(){
  const results=[];
@@ -244,6 +350,11 @@ preview_tests=r'''
   document.querySelector('#lyrics').click();
   const view=document.querySelector('braccato-lyrics');
   check('Lyrics button opens actual renderer',TvMusic.isLyricsVisible()&&view.status==='rendering');
+  const capable=CSS.supports('scroll-behavior','smooth')&&!matchMedia('(prefers-reduced-motion: reduce)').matches;
+  check('supported browser selects native smooth scrolling',getComputedStyle(document.querySelector('.tv-lyrics-scroll')).scrollBehavior===(capable?'smooth':'auto')&&document.documentElement.classList.contains('tv-smooth-lyrics')===capable);
+  check('renderer per-line scroll animation path stays disabled',view.tickOptions.smoothScroll===false&&getComputedStyle(view.renderer.container).getPropertyValue('--blyrics-animate-scroll').trim()==='0');
+  check('line timing stays honest without generated word staggering',view.theme.includes('blyrics-line-synced-animation-delay = 0'));
+  check('full lyric lines do not run opacity fades',getComputedStyle(view.querySelector('.blyrics--line')).transitionProperty.split(',').every(property=>property.trim()!=='opacity')||getComputedStyle(view.querySelector('.blyrics--line')).transitionDuration.split(',').every(duration=>parseFloat(duration)===0));
   check('demo contains six timed lines',view.lyrics.length===6,view.lyrics.length);
   check('first demo line has separate original text',view.lyrics[0].words==='Open skies above the room',view.lyrics[0].words);
   check('demo origin and simulated clock are visible',document.querySelector('.tv-lyrics-status').textContent==='Original demo text · Simulated clock');
@@ -296,14 +407,16 @@ class Handler(SimpleHTTPRequestHandler):
  def do_GET(self):
   path=urlsplit(self.path).path
   content={'/':html,'/setup.js':setup,'/injected.js':injected,'/tests.js':tests,
+    '/__legacy-effect':legacy_effect_html,'/legacy-effect-setup.js':legacy_effect_setup,'/legacy-effect-tests.js':legacy_effect_tests,
+    '/__capability':capability_html,'/capability-setup.js':capability_setup,'/capability-tests.js':capability_tests,
     '/__preview':preview_html,'/__preview-tests.js':preview_tests,
     '/__narrow':'<!doctype html><html><body style="margin:0"><iframe src="/__preview?narrow" style="display:block;width:916px;height:454px;border:0"></iframe></body></html>',
     '/__preview-errors.js':"window.__previewErrors=[];window.addEventListener('error',e=>window.__previewErrors.push(e.message));"}.get(path)
   if content is None:return super().do_GET()
-  self.send_response(200);self.send_header('Content-Type','text/html' if path in ['/', '/__preview', '/__narrow'] else 'text/javascript');self.end_headers();self.wfile.write(content.encode())
+  self.send_response(200);self.send_header('Content-Type','text/html' if path in ['/', '/__preview', '/__narrow', '/__capability', '/__legacy-effect'] else 'text/javascript');self.end_headers();self.wfile.write(content.encode())
  def do_POST(self):
   name=self.path.removeprefix('/results/')
-  if name not in ['integration','preview','narrow']:self.send_error(404);return
+  if name not in ['integration','preview','narrow','unsupported','reduced','legacy-effect']:self.send_error(404);return
   results[name]=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
   self.send_response(200);self.end_headers()
   if name=='narrow':done.set()

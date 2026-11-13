@@ -8,7 +8,8 @@ Upstream: <https://github.com/better-lyrics/braccato>
 
 The npm publication's provenance identifies source commit
 `48b6d470ac7fd413932cd7b08287505070a89f68`. `PROVENANCE.json` records the registry
-tarball, integrity hash, generated asset hashes and pinned build tool.
+tarball, integrity hash, generated asset hashes, pinned build tool and the small
+local patch for explicit TV scrolling.
 
 ## Use
 
@@ -16,7 +17,7 @@ Load `core.css`, then `core.js` as a normal script. The IIFE registers
 `<braccato-lyrics>` and exposes `BraccatoTV.theme` and `BraccatoTV.version`.
 
 ```js
-const view = document.createElement("braccato-lyrics");
+const view = new (customElements.get("braccato-lyrics"))();
 view.theme = BraccatoTV.theme; // Also disables per-letter DOM generation.
 view.tickOptions = { smoothScroll: false, followPausedSeeks: true };
 view.lyrics = [
@@ -67,6 +68,22 @@ keep `smoothScroll: false` to avoid that motion path on older WebViews. Timed
 highlight colors and automatic line following still work. The component is not
 certified against an actual Chrome 80 device; test the target TV's WebView.
 
+The app uses the scroller's native CSS `scroll-behavior: smooth` when supported
+and reduced motion is off. Explicit seeks and remote scrolling temporarily use
+instant positioning. Full-line opacity fades and upstream per-line scrolling
+were more expensive in short TCL TV samples and remain disabled. A small gold marker identifies the active line without a separate animation.
+
+The local `renderer.noteUserScroll(force = false)` patch allows explicit remote
+input to bypass the upstream budget for engine-generated scroll events. The app
+calls `noteUserScroll(true)` only for intentional input; omitted or false keeps
+upstream behavior. The reproducible patch and source hashes are in
+`rebuild.mjs` and `PROVENANCE.json`.
+
+A second compatibility patch skips optional animation drift sampling when a
+website's Web Animations polyfill omits `effect.getComputedTiming`. YouTube Music
+installs such a polyfill on this TV. Native timing APIs keep upstream behavior;
+the patch does not invent timing or alter the site's global animation objects.
+
 The checked-in bundle was exercised in headless Firefox with all four shimmed
 built-ins removed: mounting, timed word highlights, no per-letter DOM, and an
 8-second line-seek event passed. No renderer network calls or web fonts are used.
@@ -80,6 +97,7 @@ node app/src/main/assets/lyrics/rebuild.mjs
 ```
 
 The script runs `npm ci` from the pinned lockfile in a temporary directory,
-bundles both assets, copies the MIT license and rewrites `PROVENANCE.json`.
+applies the exact-match pinned source patch, bundles both assets, copies the MIT
+license and rewrites `PROVENANCE.json`. It fails if any patch source differs.
 It removes temporary dependencies afterwards. The Android app needs none of
 these build tools at runtime.

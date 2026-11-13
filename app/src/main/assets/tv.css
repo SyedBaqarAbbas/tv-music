@@ -33,6 +33,13 @@ html.tv-app {
 #tv-transport, #tv-lyrics-overlay, #tv-transport *, #tv-lyrics-overlay * { box-sizing: border-box; }
 #tv-transport[hidden], #tv-lyrics-overlay[hidden], #tv-lyrics-overlay [hidden] { display: none !important; }
 .tv-transport-ready ytmusic-player-bar { visibility: hidden !important; pointer-events: none !important; }
+/* The opaque lyrics screen already replaces this content visually. Skip its
+   rendering work while keeping YouTube's media/session model alive. */
+.tv-lyrics-open ytmusic-app {
+  visibility: hidden !important;
+  content-visibility: hidden;
+  contain-intrinsic-size: 100vw 100vh;
+}
 #tv-transport {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 2147483647;
   height: var(--tv-player-height); display: flex; align-items: center;
@@ -113,6 +120,17 @@ html.tv-app {
   --blyrics-lyric-active-color: #f2eee6;
   --blyrics-lyric-inactive-color: #74716e;
   --blyrics-glow-color: transparent;
+}
+.tv-smooth-lyrics #tv-lyrics-overlay .tv-lyrics-scroll { scroll-behavior: smooth; }
+.tv-smooth-lyrics #tv-lyrics-overlay .blyrics--line { position: relative; }
+.tv-smooth-lyrics #tv-lyrics-overlay .blyrics--line::before {
+  content: ''; position: absolute; left: 0; top: .35em; bottom: .35em;
+  width: 2px; border-radius: 2px; background: var(--tv-accent);
+  transform: scaleY(0); transform-origin: center;
+}
+.tv-smooth-lyrics #tv-lyrics-overlay .blyrics--line.blyrics--active::before { transform: scaleY(1); }
+@media (prefers-reduced-motion: reduce) {
+  #tv-lyrics-overlay .tv-lyrics-scroll { scroll-behavior: auto !important; }
 }
 #tv-lyrics-overlay .tv-plain-lyrics { white-space: pre-wrap; font-size: clamp(23px,2.8vw,40px); line-height: 1.65; color: #d6d0c7; padding: 16px 8px; }
 #tv-lyrics-overlay footer { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-width: 0; color: #9a958b; font-size: 10px; letter-spacing: .4px; }
