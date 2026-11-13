@@ -4,6 +4,8 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.res.ColorStateList;
 import android.content.pm.ApplicationInfo;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -23,6 +25,8 @@ import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
 import android.webkit.CookieManager;
+import android.webkit.JsPromptResult;
+import android.webkit.JsResult;
 import android.webkit.RenderProcessGoneDetail;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -52,8 +56,11 @@ import java.nio.charset.StandardCharsets;
 /** A single platform WebView and a small, remote-accessible native toolbar. */
 public final class MainActivity extends Activity {
     private static final String HOME = "https://music.youtube.com/";
-    private static final int BACKGROUND = Color.rgb(16, 19, 16);
-    private static final int ACCENT = Color.rgb(183, 243, 107);
+    private static final int BACKGROUND = Color.rgb(16, 17, 22);
+    private static final int SURFACE = Color.rgb(25, 26, 32);
+    private static final int TEXT = Color.rgb(242, 238, 230);
+    private static final int MUTED = Color.rgb(169, 166, 160);
+    private static final int ACCENT = Color.rgb(203, 183, 146);
     private final Handler handler = new Handler(Looper.getMainLooper());
     private WebView webView;
     private FrameLayout webContainer;
@@ -63,6 +70,10 @@ public final class MainActivity extends Activity {
     private TextView errorText;
     private ProgressBar progress;
     private Button homeButton;
+    private Button controlsHandle;
+    private SharedPreferences preferences;
+    private AlertDialog activeDialog;
+    private boolean chromeExpanded;
     private Button lyricsButton;
     private Button retryButton;
     private LyricsRepository lyricsRepository;
@@ -102,6 +113,8 @@ public final class MainActivity extends Activity {
                 WindowManager.LayoutParams.FLAG_FULLSCREEN);
         lyricsRepository = new LyricsRepository(handler,
                 (getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0);
+        preferences = getSharedPreferences("presentation", MODE_PRIVATE);
+        chromeExpanded = preferences.getBoolean("chrome_expanded", false);
         buildLayout();
         try {
             injectionScript = buildInjectionScript();
@@ -113,64 +126,104 @@ public final class MainActivity extends Activity {
     }
 
     private void buildLayout() {
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
+        FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(BACKGROUND);
-        root.setPadding(dp(22), dp(12), dp(22), dp(14));
+        root.setPadding(dp(12), dp(12), dp(12), dp(12));
         setContentView(root);
-
-        toolbar = new LinearLayout(this);
-        toolbar.setOrientation(LinearLayout.HORIZONTAL);
-        toolbar.setGravity(Gravity.CENTER_VERTICAL);
-        toolbar.setPadding(0, 0, 0, dp(4));
-        root.addView(toolbar, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
-
-        TextView brand = new TextView(this);
-        brand.setText(R.string.app_name);
-        brand.setTextColor(ACCENT);
-        brand.setTextSize(20);
-        brand.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        toolbar.addView(brand, new LinearLayout.LayoutParams(0,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
-        homeButton = addToolbarButton("Home", v -> {
-            if (webView == null) { retry(); return; }
-            if (pageReady) callScript("home()", null);
-            else webView.loadUrl(HOME);
-            focusPlayer();
-        });
-        addToolbarButton("Search", v -> showSearch());
-        lyricsButton = addToolbarButton("Lyrics", v -> toggleLyrics());
-        addToolbarButton("Reload", v -> retry());
-        addToolbarButton("Help", v -> showHelp());
-
-        progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-        progress.setMax(100);
-        root.addView(progress, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(2)));
         webContainer = new FrameLayout(this);
-        root.addView(webContainer, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        root.addView(webContainer, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         cursorOverlay = new CursorOverlayView(this);
         webContainer.addView(cursorOverlay, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
+        toolbar = new LinearLayout(this);
+        toolbar.setOrientation(LinearLayout.HORIZONTAL);
+        toolbar.setGravity(Gravity.CENTER_VERTICAL);
+        toolbar.setPadding(dp(12), dp(2), dp(4), dp(2));
+        toolbar.setBackground(surfaceBackground(SURFACE, dp(10)));
+        TextView brand = new TextView(this);
+        brand.setText("MUSIC / TV");
+        brand.setTextColor(TEXT);
+        brand.setTextSize(12);
+        brand.setLetterSpacing(0.14f);
+        brand.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        toolbar.addView(brand, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        homeButton = addToolbarButton("Home", v -> {
+            setChromeExpanded(false, true);
+            if (webView == null) { retry(); return; }
+            if (pageReady) callScript("home()", null);
+            else webView.loadUrl(HOME);
+        });
+        addToolbarButton("Search", v -> showSearch());
+        lyricsButton = addToolbarButton("Lyrics", v -> {
+            setChromeExpanded(false, true);
+            toggleLyrics();
+        });
+        addToolbarButton("Account", v -> showAccount(null));
+        addToolbarButton("More", v -> showMore());
+        addToolbarButton("Hide ↑", v -> setChromeExpanded(false, true));
+        FrameLayout.LayoutParams barLayout = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(44), Gravity.TOP);
+        webContainer.addView(toolbar, barLayout);
+
+        controlsHandle = makeButton("Controls");
+        controlsHandle.setTextSize(11);
+        controlsHandle.setMinWidth(0);
+        controlsHandle.setMinimumWidth(0);
+        controlsHandle.setPadding(dp(10), 0, dp(10), 0);
+        controlsHandle.setBackground(surfaceBackground(SURFACE, dp(14)));
+        controlsHandle.setOnFocusChangeListener((view, focused) -> {
+            controlsHandle.setBackground(surfaceBackground(focused ? ACCENT : SURFACE, dp(14)));
+            controlsHandle.setTextColor(focused ? BACKGROUND : TEXT);
+            if (focused) hideCursor();
+        });
+        controlsHandle.setContentDescription("Open controls. Press Menu on the remote.");
+        controlsHandle.setOnClickListener(v -> setChromeExpanded(true, true));
+        controlsHandle.setOnKeyListener((view, key, event) -> {
+            if (key != KeyEvent.KEYCODE_DPAD_DOWN) return false;
+            if (event.getAction() == KeyEvent.ACTION_DOWN) setChromeExpanded(false, true);
+            return true;
+        });
+        webContainer.addView(controlsHandle, new FrameLayout.LayoutParams(dp(90), dp(28),
+                Gravity.TOP | Gravity.END));
+        toolbar.setVisibility(chromeExpanded ? View.VISIBLE : View.GONE);
+        controlsHandle.setVisibility(chromeExpanded ? View.GONE : View.VISIBLE);
+
+        progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        progress.setMax(100);
+        progress.setProgressTintList(ColorStateList.valueOf(ACCENT));
+        progress.setProgressBackgroundTintList(ColorStateList.valueOf(Color.TRANSPARENT));
+        webContainer.addView(progress, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(2), Gravity.TOP));
+
         errorPanel = new LinearLayout(this);
         errorPanel.setOrientation(LinearLayout.VERTICAL);
         errorPanel.setGravity(Gravity.CENTER);
-        errorPanel.setPadding(dp(48), dp(24), dp(48), dp(24));
+        errorPanel.setPadding(dp(32), dp(24), dp(32), dp(24));
         errorPanel.setBackgroundColor(BACKGROUND);
+        TextView eyebrow = new TextView(this);
+        eyebrow.setText("MUSIC / TV");
+        eyebrow.setTextSize(12);
+        eyebrow.setLetterSpacing(0.14f);
+        eyebrow.setTextColor(ACCENT);
+        eyebrow.setGravity(Gravity.CENTER);
+        errorPanel.addView(eyebrow);
         errorText = new TextView(this);
-        errorText.setTextColor(Color.WHITE);
-        errorText.setTextSize(20);
+        errorText.setTextColor(TEXT);
+        errorText.setTextSize(19);
+        errorText.setLineSpacing(dp(5), 1f);
         errorText.setGravity(Gravity.CENTER);
-        errorPanel.addView(errorText, new LinearLayout.LayoutParams(
-                dp(570), ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams messageLayout = new LinearLayout.LayoutParams(
+                Math.min(dp(570), getResources().getDisplayMetrics().widthPixels - dp(120)),
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        messageLayout.topMargin = dp(20);
+        errorPanel.addView(errorText, messageLayout);
         retryButton = makeButton("Try again");
         retryButton.setOnClickListener(v -> retry());
         LinearLayout.LayoutParams retryLayout = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, dp(48));
+                dp(128), dp(44));
         retryLayout.topMargin = dp(24);
         errorPanel.addView(retryButton, retryLayout);
         webContainer.addView(errorPanel, new FrameLayout.LayoutParams(
@@ -183,12 +236,12 @@ public final class MainActivity extends Activity {
         button.setOnClickListener(listener);
         button.setOnKeyListener((v, keyCode, event) -> {
             if (keyCode != KeyEvent.KEYCODE_DPAD_DOWN) return false;
-            if (event.getAction() == KeyEvent.ACTION_DOWN) focusPlayer();
+            if (event.getAction() == KeyEvent.ACTION_DOWN) setChromeExpanded(false, true);
             return true;
         });
         LinearLayout.LayoutParams layout = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, dp(44));
-        layout.setMarginStart(dp(8));
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(40));
+        layout.setMarginStart(dp(3));
         toolbar.addView(button, layout);
         return button;
     }
@@ -197,28 +250,52 @@ public final class MainActivity extends Activity {
         Button button = new Button(this);
         button.setId(View.generateViewId());
         button.setText(label);
-        button.setTextSize(14);
+        button.setTextSize(12);
+        button.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         button.setAllCaps(false);
-        button.setMinWidth(dp(76));
-        button.setMinimumWidth(dp(76));
-        button.setPadding(dp(14), 0, dp(14), 0);
-        button.setTextColor(Color.WHITE);
+        button.setMinHeight(0);
+        button.setMinimumHeight(0);
+        button.setMinWidth(dp(62));
+        button.setMinimumWidth(dp(62));
+        button.setPadding(dp(12), 0, dp(12), 0);
+        button.setTextColor(TEXT);
         button.setBackground(buttonBackground(false));
         button.setFocusable(true);
         button.setFocusableInTouchMode(true);
+        button.setStateListAnimator(null);
         button.setOnFocusChangeListener((view, hasFocus) -> {
             button.setBackground(buttonBackground(hasFocus));
-            button.setTextColor(hasFocus ? BACKGROUND : Color.WHITE);
+            button.setTextColor(hasFocus ? BACKGROUND : TEXT);
             if (hasFocus) hideCursor();
         });
         return button;
     }
 
-    private GradientDrawable buttonBackground(boolean focused) {
+    private GradientDrawable surfaceBackground(int color, int radius) {
         GradientDrawable background = new GradientDrawable();
-        background.setColor(focused ? ACCENT : Color.rgb(38, 43, 37));
-        background.setCornerRadius(dp(8));
+        background.setColor(color);
+        background.setCornerRadius(radius);
+        background.setStroke(dp(1), Color.argb(36, 242, 238, 230));
         return background;
+    }
+
+    private GradientDrawable buttonBackground(boolean focused) {
+        return surfaceBackground(focused ? ACCENT : Color.TRANSPARENT, dp(7));
+    }
+
+    private void setChromeExpanded(boolean expanded, boolean transferFocus) {
+        chromeExpanded = expanded;
+        toolbar.setVisibility(expanded ? View.VISIBLE : View.GONE);
+        controlsHandle.setVisibility(expanded ? View.GONE : View.VISIBLE);
+        if (expanded) toolbar.bringToFront();
+        else controlsHandle.bringToFront();
+        if (preferences != null) preferences.edit().putBoolean("chrome_expanded", expanded).apply();
+        callScript("setChromeExpanded(" + expanded + ")", null);
+        if (!transferFocus) return;
+        if (expanded) {
+            hideCursor();
+            homeButton.requestFocus();
+        } else focusPlayer();
     }
 
     @SuppressWarnings("deprecation")
@@ -265,6 +342,25 @@ public final class MainActivity extends Activity {
         player.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_BOUND, true);
         player.setWebViewClient(new PlayerClient());
         player.setWebChromeClient(new WebChromeClient() {
+            @Override public boolean onJsBeforeUnload(WebView view, String url, String message, JsResult result) {
+                if (view == webView && isMusicUrl(Uri.parse(url))) {
+                    // Home, Search and Reload already express the user's navigation intent.
+                    result.confirm();
+                    return true;
+                }
+                return super.onJsBeforeUnload(view, url, message, result);
+            }
+            @Override public boolean onJsPrompt(WebView view, String url, String message,
+                    String defaultValue, JsPromptResult result) {
+                if (view == webView && pageReady && isMusicUrl(Uri.parse(url))
+                        && "tv-music:lyrics-state".equals(message)
+                        && ("on".equals(defaultValue) || "off".equals(defaultValue))) {
+                    setLyricsVisible("on".equals(defaultValue));
+                    result.confirm("");
+                    return true;
+                }
+                return super.onJsPrompt(view, url, message, defaultValue, result);
+            }
             @Override public void onProgressChanged(WebView view, int value) {
                 if (view != webView) return;
                 progress.setProgress(value);
@@ -317,13 +413,15 @@ public final class MainActivity extends Activity {
                     showError("The TV controls could not start. Reload the player and try again.");
                     return;
                 }
+                callScript("setChromeExpanded(" + chromeExpanded + ")", null);
                 if (!foreground) callScript("suspend()", null);
                 else {
-                    focusPlayer();
+                    if (chromeExpanded) homeButton.requestFocus();
+                    else focusPlayer();
                     if (!cursorHintShown) {
                         cursorHintShown = true;
                         Toast.makeText(MainActivity.this,
-                                "Arrows move cursor · OK click · Menu toolbar", Toast.LENGTH_LONG).show();
+                                "Arrows move cursor · OK click · Menu shows controls", Toast.LENGTH_LONG).show();
                     }
                 }
             });
@@ -363,13 +461,14 @@ public final class MainActivity extends Activity {
         if (isMusicUrl(uri)) return false;
         if ("https".equalsIgnoreCase(uri.getScheme()) && uri.getHost() != null) {
             String host = uri.getHost().toLowerCase(java.util.Locale.ROOT);
-            boolean googleSignIn = host.equals("accounts.google.com") || host.endsWith(".accounts.google.com");
-            String message = googleSignIn
-                    ? "Google may block sign-in inside embedded players. Opening this page in the TV browser will not sign this player in. You can still try listening without signing in."
-                    : "Open this link in the TV's browser?";
-            new AlertDialog.Builder(this).setTitle(googleSignIn ? "Google sign-in" : "Open browser")
-                    .setMessage(message).setNegativeButton("Stay here", null)
-                    .setPositiveButton("Open browser", (dialog, which) -> openExternal(uri)).show();
+            if (host.equals("accounts.google.com") || host.endsWith(".accounts.google.com")) {
+                showAccount(uri);
+            } else {
+                showDialog(dialogBuilder("Open in browser")
+                        .setMessage("This link opens in the TV browser.")
+                        .setNegativeButton("Stay here", null)
+                        .setPositiveButton("Open browser", (dialog, which) -> openExternal(uri)).create(), null);
+            }
         } else {
             Toast.makeText(this, "Only secure web links are supported.", Toast.LENGTH_SHORT).show();
         }
@@ -380,9 +479,9 @@ public final class MainActivity extends Activity {
         try {
             startActivity(new Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE));
         } catch (ActivityNotFoundException error) {
-            new AlertDialog.Builder(this).setTitle("No browser available")
-                    .setMessage("This TV has no browser that can open this link.")
-                    .setPositiveButton("OK", null).show();
+            showDialog(dialogBuilder("Browser unavailable")
+                    .setMessage("No browser is installed on this TV. You can keep listening here.")
+                    .setPositiveButton("Return to music", null).create(), null);
         }
     }
 
@@ -403,7 +502,7 @@ public final class MainActivity extends Activity {
                 + "if(window.__musicForTvInjected)return !!window.TvMusic;"
                 + "try{var s=document.createElement('style');s.id='music-for-tv-style';s.textContent="
                 + jsString(css) + ";(document.head||document.documentElement).appendChild(s);\n"
-                + readAsset("lyrics/core.js") + "\n" + readAsset("tv.js")
+                + readAsset("lyrics/core.js") + "\nwindow.__musicForTvNative=true;\n" + readAsset("tv.js")
                 + "\nwindow.__musicForTvInjected=true;return !!window.TvMusic;}catch(e){return false;}})();";
     }
 
@@ -445,6 +544,7 @@ public final class MainActivity extends Activity {
     }
 
     private void setLyricsVisible(boolean visible) {
+        if (lyricsVisible == visible) return;
         lyricsVisible = visible;
         lyricsButton.setText(visible ? "Lyrics on" : "Lyrics");
         lyricsGeneration++;
@@ -477,7 +577,13 @@ public final class MainActivity extends Activity {
                     return;
                 }
                 JSONObject metadata = snapshot.optJSONObject("request");
-                if (metadata == null) return;
+                if (metadata == null) {
+                    if (!currentLyricsKey.isEmpty()) {
+                        currentLyricsKey = "";
+                        lyricsGeneration++;
+                    }
+                    return;
+                }
                 String key = lyricsKey(metadata);
                 if (key.equals(currentLyricsKey)) return;
                 currentLyricsKey = key;
@@ -498,7 +604,7 @@ public final class MainActivity extends Activity {
     private static String lyricsKey(JSONObject metadata) {
         return metadata.optString("trackId") + '\n' + metadata.optString("title") + '\n'
                 + metadata.optString("artist") + '\n' + metadata.optString("album") + '\n'
-                + metadata.optDouble("duration", 0);
+                + metadata.optDouble("duration", 0) + '\n' + metadata.optString("retryNonce");
     }
 
     private static String jsString(String text) {
@@ -519,7 +625,9 @@ public final class MainActivity extends Activity {
             return true;
         }
         if (key == KeyEvent.KEYCODE_MENU) {
-            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) focusToolbar();
+            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+                setChromeExpanded(!chromeExpanded, true);
+            }
             return true;
         }
         if (webView != null && webView.hasFocus() && pageReady && foreground) {
@@ -577,8 +685,7 @@ public final class MainActivity extends Activity {
     }
 
     private void focusToolbar() {
-        hideCursor();
-        homeButton.requestFocus();
+        setChromeExpanded(true, true);
     }
 
     private void moveCursor(int key, int repeatCount) {
@@ -641,6 +748,12 @@ public final class MainActivity extends Activity {
         if (player == null || !foreground || !pageReady) return;
         if (!cursorInitialized) centerCursor();
         if (!cursorInitialized) return;
+        if (!chromeExpanded && controlsHandle.getVisibility() == View.VISIBLE
+                && cursorX >= controlsHandle.getLeft() && cursorX < controlsHandle.getRight()
+                && cursorY >= controlsHandle.getTop() && cursorY < controlsHandle.getBottom()) {
+            controlsHandle.performClick();
+            return;
+        }
         cursorTouchDownTime = SystemClock.uptimeMillis();
         cursorTouchDown = true;
         try {
@@ -682,6 +795,10 @@ public final class MainActivity extends Activity {
 
     @SuppressWarnings("deprecation")
     @Override public void onBackPressed() {
+        if (chromeExpanded && errorPanel.getVisibility() != View.VISIBLE) {
+            setChromeExpanded(false, true);
+            return;
+        }
         if (webView == null || !pageReady) { super.onBackPressed(); return; }
         final WebView player = webView;
         final long expectedPage = pageGeneration;
@@ -702,7 +819,9 @@ public final class MainActivity extends Activity {
     }
 
     private void focusPlayer() {
-        if (webView != null && errorPanel.getVisibility() != View.VISIBLE) {
+        if (errorPanel.getVisibility() == View.VISIBLE) {
+            retryButton.requestFocus();
+        } else if (webView != null && activeDialog == null) {
             webView.requestFocus();
             updateCursorVisibility();
         }
@@ -734,53 +853,165 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private AlertDialog.Builder dialogBuilder(String title) {
+        return new AlertDialog.Builder(this, R.style.AppDialogTheme).setTitle(title);
+    }
+
+    /** One dialog at a time; every cancel path returns to a usable native focus target. */
+    private void showDialog(AlertDialog dialog, Runnable onShown) {
+        if (activeDialog != null) activeDialog.dismiss();
+        activeDialog = dialog;
+        hideCursor();
+        dialog.setOnDismissListener(ignored -> {
+            if (activeDialog != dialog) return;
+            activeDialog = null;
+            if (destroyed || !foreground) return;
+            if (errorPanel.getVisibility() == View.VISIBLE) retryButton.requestFocus();
+            else if (chromeExpanded) homeButton.requestFocus();
+            else focusPlayer();
+        });
+        dialog.setOnShowListener(ignored -> {
+            if (dialog.getWindow() != null) {
+                dialog.getWindow().setBackgroundDrawable(surfaceBackground(SURFACE, dp(14)));
+                dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+                WindowManager.LayoutParams layout = dialog.getWindow().getAttributes();
+                layout.dimAmount = 0.62f;
+                dialog.getWindow().setAttributes(layout);
+                dialog.getWindow().setLayout(Math.min(dp(540), getResources().getDisplayMetrics().widthPixels - dp(48)),
+                        ViewGroup.LayoutParams.WRAP_CONTENT);
+            }
+            for (int which : new int[] {AlertDialog.BUTTON_POSITIVE, AlertDialog.BUTTON_NEGATIVE,
+                    AlertDialog.BUTTON_NEUTRAL}) {
+                Button button = dialog.getButton(which);
+                if (button == null) continue;
+                button.setAllCaps(false);
+                button.setTextSize(13);
+                button.setTextColor(ACCENT);
+                button.setBackground(buttonBackground(false));
+                button.setOnFocusChangeListener((view, focused) -> {
+                    button.setBackground(buttonBackground(focused));
+                    button.setTextColor(focused ? BACKGROUND : TEXT);
+                });
+                // The positive button may already hold focus before onShow runs.
+                button.setBackground(buttonBackground(button.hasFocus()));
+                button.setTextColor(button.hasFocus() ? BACKGROUND : TEXT);
+            }
+            TextView message = dialog.findViewById(android.R.id.message);
+            if (message != null) {
+                message.setTextColor(MUTED);
+                message.setTextSize(15);
+                message.setLineSpacing(dp(4), 1f);
+            }
+            if (onShown != null) onShown.run();
+        });
+        dialog.show();
+    }
+
+    private void showMore() {
+        setChromeExpanded(false, false);
+        LinearLayout items = new LinearLayout(this);
+        items.setOrientation(LinearLayout.VERTICAL);
+        items.setPadding(dp(20), dp(8), dp(20), dp(12));
+        AlertDialog menu = dialogBuilder("More").setView(items).setNegativeButton("Close", null).create();
+        String[] labels = {"Reload player", "Remote guide", "Account"};
+        for (int i = 0; i < labels.length; i++) {
+            final int action = i;
+            Button item = makeButton(labels[i]);
+            LinearLayout.LayoutParams layout = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(44));
+            layout.topMargin = dp(6);
+            items.addView(item, layout);
+            item.setOnClickListener(view -> {
+                menu.dismiss();
+                if (action == 0) retry();
+                else if (action == 1) showHelp();
+                else showAccount(null);
+            });
+        }
+        showDialog(menu, () -> items.getChildAt(0).requestFocus());
+    }
+
+    private void showAccount(Uri requestedUrl) {
+        setChromeExpanded(false, false);
+        Uri browserUrl = requestedUrl == null ? Uri.parse(HOME) : requestedUrl;
+        showDialog(dialogBuilder("Your account")
+                .setMessage("Google blocks sign-in inside embedded players. Listen here as a guest, or open YouTube and choose Music to use your Google account. Your lyrics view stays in this app.\n\nBrowser sign-in stays in the browser and does not sign this app in.")
+                .setNegativeButton("Keep listening", null)
+                .setNeutralButton("Open browser", (dialog, which) -> openExternal(browserUrl))
+                .setPositiveButton("Open YouTube", (dialog, which) -> openYouTube()).create(), null);
+    }
+
+    private void openYouTube() {
+        String packageName = "com.google.android.youtube.tv";
+        Intent launch = getPackageManager().getLeanbackLaunchIntentForPackage(packageName);
+        if (launch == null) launch = getPackageManager().getLaunchIntentForPackage(packageName);
+        if (launch != null) {
+            try {
+                startActivity(launch);
+                return;
+            } catch (ActivityNotFoundException | SecurityException ignored) {
+                // A disabled or unavailable TV app should leave this player usable.
+            }
+        }
+        showDialog(dialogBuilder("YouTube unavailable")
+                .setMessage("The YouTube TV app could not be opened. Check that it is installed and enabled, then choose Music inside YouTube. You can keep listening here as a guest.")
+                .setPositiveButton("Keep listening", null).create(), null);
+    }
+
     private void showHelp() {
-        new AlertDialog.Builder(this).setTitle("Remote controls")
-                .setMessage("Arrows move the visible cursor. Hold an arrow to move faster. Press OK to click at the cursor. Keep moving at a page edge to scroll.\n\nPress Menu to reach the toolbar, or move Up past the top after scrolling all the way up. Press Down from the toolbar to return to the cursor.\n\nLyrics shows available synchronized lyrics for the current song. Play/pause and skip buttons control playback.\n\nThis independent player uses the official YouTube Music website. Google may restrict embedded sign-in; an external browser login does not sign this player in.")
-                .setPositiveButton("Got it", null).show();
+        setChromeExpanded(false, false);
+        showDialog(dialogBuilder("Remote guide")
+                .setMessage("Arrows move the cursor. Hold to move faster. OK clicks. At a page edge, keep moving to scroll.\n\nMenu opens or hides the controls. Down from the controls returns to music; Up at the top of the page reveals them.\n\nUse Lyrics for available synchronized lyrics. Play, pause and skip work with your remote’s media keys.")
+                .setPositiveButton("Return to music", null).create(), null);
     }
 
     private void showSearch() {
         if (webView == null) {
-            Toast.makeText(this, "Select Reload to open the player first.", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Open More → Reload player first.", Toast.LENGTH_SHORT).show();
             return;
         }
+        setChromeExpanded(false, false);
         EditText query = new EditText(this);
         query.setSingleLine(true);
-        query.setTextSize(20);
+        query.setTextSize(18);
+        query.setTextColor(TEXT);
+        query.setHintTextColor(MUTED);
+        query.setBackgroundTintList(ColorStateList.valueOf(ACCENT));
         query.setHint("Song, artist, or album");
         query.setInputType(InputType.TYPE_CLASS_TEXT);
         query.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
         LinearLayout fieldContainer = new LinearLayout(this);
-        fieldContainer.setPadding(dp(24), dp(12), dp(24), 0);
+        fieldContainer.setPadding(dp(24), dp(8), dp(24), dp(8));
         fieldContainer.addView(query, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(56)));
-        AlertDialog dialog = new AlertDialog.Builder(this).setTitle("Search YouTube Music")
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(52)));
+        AlertDialog dialog = dialogBuilder("Find your music")
                 .setView(fieldContainer).setNegativeButton("Cancel", null)
                 .setPositiveButton("Search", null).create();
-        dialog.setOnShowListener(ignored -> {
+        query.setOnEditorActionListener((view, action, event) -> {
+            if (action != EditorInfo.IME_ACTION_SEARCH) return false;
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+            return true;
+        });
+        showDialog(dialog, () -> {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(button -> {
                 String text = query.getText().toString().trim();
                 if (text.isEmpty()) { query.setError("Enter a song or artist"); return; }
                 if (webView != null) {
                     Uri url = Uri.parse(HOME).buildUpon().appendPath("search")
                             .appendQueryParameter("q", text).build();
-                    webView.loadUrl(url.toString());
+                    if (pageReady) {
+                        callScript("searchFor(" + jsString(text) + ")", navigated -> {
+                            if (!"true".equals(navigated) && webView != null) webView.loadUrl(url.toString());
+                        });
+                    } else webView.loadUrl(url.toString());
                 }
                 dialog.dismiss();
-                focusPlayer();
             });
             query.requestFocus();
             if (dialog.getWindow() != null) {
                 dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
             }
         });
-        query.setOnEditorActionListener((view, action, event) -> {
-            if (action != EditorInfo.IME_ACTION_SEARCH) return false;
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
-            return true;
-        });
-        dialog.show();
     }
 
     @Override protected void onResume() {
@@ -808,6 +1039,7 @@ public final class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         destroyed = true;
+        if (activeDialog != null) activeDialog.dismiss();
         hideCursor();
         pageGeneration++;
         handler.removeCallbacksAndMessages(null);

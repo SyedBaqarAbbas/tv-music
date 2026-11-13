@@ -1,83 +1,138 @@
-/* TV controls only; the YouTube Music page remains the playback source. */
-.tv-focused {
-  outline: 4px solid #b9e5c8 !important;
-  outline-offset: 5px !important;
-  border-radius: 8px !important;
+/* A small TV theme. Static surfaces, system fonts, and no backdrop filters. */
+:root {
+  --tv-ink: #101116;
+  --tv-surface: #191a21;
+  --tv-line: #33343e;
+  --tv-paper: #f2eee6;
+  --tv-muted: #aaa7a3;
+  --tv-accent: #cbb792;
+  --tv-player-height: 78px;
 }
-.tv-transport-ready #tv-lyrics-overlay { bottom: 76px; }
-.tv-transport-ready ytmusic-player-bar { visibility: hidden !important; pointer-events: none !important; }
-#tv-transport[hidden] { display: none !important; }
-#tv-transport {
-  position: fixed; left: 0; right: 0; bottom: 0;
-  z-index: 2147483647;
-  height: 72px; box-sizing: border-box;
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 14px; background: #18272b; color: #f4f7f4;
-  font: 16px system-ui, sans-serif;
-  border-top: 1px solid #47616a;
+html.tv-app {
+  color-scheme: dark;
+  background: var(--tv-ink);
+  --ytmusic-background: #101116;
+  --ytmusic-nav-bar-background: #101116;
+  --ytmusic-menu-background: #1b1c23;
+  --ytmusic-player-page-background: #101116;
+  --ytmusic-color-grey1: #f2eee6;
+  --ytmusic-color-grey2: #aaa7a3;
 }
-#tv-transport button {
-  border: 1px solid #47616a; border-radius: 6px;
-  padding: 10px 12px; background: #263c41; color: #f4f7f4;
-  font: inherit; min-height: 42px; cursor: pointer;
-}
-#tv-transport .tv-transport-title {
-  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-#tv-transport input { width: 18vw; min-width: 70px; accent-color: #b9e5c8; cursor: pointer; }
-#tv-transport .tv-transport-time { white-space: nowrap; font-variant-numeric: tabular-nums; }
-#tv-lyrics-overlay[hidden] { display: none !important; }
-#tv-lyrics-overlay {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 2147483646;
-  display: flex;
-  flex-direction: column;
+.tv-app ytmusic-nav-bar {
+  background: #101116 !important;
+  border-bottom: 1px solid #282930;
   box-sizing: border-box;
-  padding: 3vh 5vw 2vh;
-  background: #101b20;
-  color: #f4f7f4;
-  font-family: system-ui, sans-serif;
-  text-align: left;
 }
-#tv-lyrics-overlay .tv-eyebrow { color: #b9e5c8; font-size: 16px; letter-spacing: 2px; }
-#tv-lyrics-overlay h1 {
-  font-size: 28px;
-  font-weight: 500;
-  line-height: 1.3;
-  margin: 12px 0 2px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.tv-app ytmusic-app-layout { --ytmusic-player-bar-height: var(--tv-player-height); }
+.tv-app ytmusic-guide-renderer { background: #101116 !important; }
+.tv-app ytmusic-two-row-item-renderer { border-radius: 12px; }
+.tv-app ytmusic-two-row-item-renderer .image,
+.tv-app ytmusic-two-row-item-renderer .image-wrapper { border-radius: 10px !important; overflow: hidden; }
+.tv-app ytmusic-chip-cloud-chip-renderer { --ytmusic-chip-background: #26272e; }
+.tv-app .tv-focused { outline: 2px solid var(--tv-accent) !important; outline-offset: 4px; border-radius: 6px; }
+#tv-transport, #tv-lyrics-overlay, #tv-transport *, #tv-lyrics-overlay * { box-sizing: border-box; }
+#tv-transport[hidden], #tv-lyrics-overlay[hidden], #tv-lyrics-overlay [hidden] { display: none !important; }
+.tv-transport-ready ytmusic-player-bar { visibility: hidden !important; pointer-events: none !important; }
+#tv-transport {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 2147483647;
+  height: var(--tv-player-height); display: flex; align-items: center;
+  gap: 12px; padding: 15px 3.2vw 10px;
+  background: #18191f; color: var(--tv-paper);
+  font: 14px system-ui, sans-serif; border-top: 1px solid #30313a;
 }
-#tv-lyrics-overlay .tv-lyrics-status { color: #a5b8bc; font-size: 17px; margin: 8px 0 12px; }
-#tv-lyrics-overlay .tv-lyrics-scroll {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: #47616a transparent;
+#tv-transport .tv-transport-artwork { flex: 0 0 44px; width: 44px; height: 44px; border-radius: 7px; }
+#tv-transport .tv-transport-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+#tv-transport .tv-transport-title { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#tv-transport .tv-transport-artist { font-size: 12px; color: var(--tv-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#tv-transport .tv-transport-controls { display: flex; align-items: center; gap: 8px; }
+#tv-transport .tv-transport-extra { flex: 1; display: flex; justify-content: flex-end; align-items: center; gap: 20px; min-width: 0; }
+#tv-transport .tv-transport-time { font-size: 12px; color: #b7b4af; white-space: nowrap; font-variant-numeric: tabular-nums; }
+#tv-transport .tv-icon-button.tv-play-button { background: var(--tv-paper); color: #16171c; border-radius: 50%; width: 42px; height: 42px; }
+#tv-transport .tv-icon-button.tv-play-button:hover, #tv-transport .tv-icon-button.tv-play-button:focus { background: var(--tv-accent); }
+#tv-transport input[type=range] {
+  position: absolute; top: -9px; left: 0; width: 100%; height: 18px; padding: 0; margin: 0;
+  appearance: none; -webkit-appearance: none; background: transparent; cursor: pointer;
 }
-#tv-lyrics-overlay .tv-lyrics-scroll::-webkit-scrollbar { width: 6px; }
-#tv-lyrics-overlay .tv-lyrics-scroll::-webkit-scrollbar-thumb { background: #47616a; border-radius: 4px; }
+#tv-transport input[type=range]::-webkit-slider-runnable-track {
+  height: 2px; background: linear-gradient(to right, var(--tv-accent) 0%, var(--tv-accent) var(--tv-progress, 0%), #41414a var(--tv-progress, 0%), #41414a 100%);
+}
+#tv-transport input[type=range]::-moz-range-track { height: 2px; background: #41414a; }
+#tv-transport input[type=range]::-moz-range-progress { height: 2px; background: var(--tv-accent); }
+#tv-transport input[type=range]::-webkit-slider-thumb {
+  appearance: none; -webkit-appearance: none; width: 10px; height: 10px;
+  margin-top: -4px; border-radius: 50%; background: var(--tv-accent); border: 0;
+}
+#tv-transport input[type=range]::-moz-range-thumb { width: 10px; height: 10px; border-radius: 50%; background: var(--tv-accent); border: 0; }
+#tv-transport input[type=range]:focus { outline: 1px solid var(--tv-accent); outline-offset: -2px; }
+#tv-transport .tv-icon-button, #tv-lyrics-overlay .tv-icon-button {
+  display: inline-flex; align-items: center; justify-content: center;
+  flex: 0 0 auto; width: 38px; height: 38px; padding: 9px;
+  border: 1px solid transparent; border-radius: 50%; background: transparent; color: #d8d5cf;
+  cursor: pointer; font: inherit;
+}
+#tv-transport .tv-icon-button:hover, #tv-lyrics-overlay .tv-icon-button:hover { background: #30313a; }
+#tv-transport .tv-icon-button:focus, #tv-lyrics-overlay .tv-icon-button:focus { outline: 2px solid var(--tv-accent); outline-offset: 2px; }
+#tv-transport .tv-lyrics-toggle[aria-pressed=true] { color: var(--tv-accent); background: #302d29; }
+#tv-transport svg, #tv-lyrics-overlay svg { width: 100%; height: 100%; display: block; }
+.tv-artwork { position: relative; overflow: hidden; background: linear-gradient(145deg,#66513c,#292b37 56%,#18242a); }
+.tv-artwork img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tv-artwork img[hidden] { display: none; }
+.tv-artwork-placeholder { display: none; position: absolute; width: 28%; height: 28%; top: 36%; left: 36%; color: #cbb792; opacity: .7; }
+.tv-artwork-empty .tv-artwork-placeholder { display: block; }
+#tv-lyrics-overlay {
+  position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 2147483646;
+  display: grid; grid-template-rows: 34px minmax(0,1fr) 28px;
+  gap: 18px; padding: 22px 4.7vw 14px;
+  background-color: #101116;
+  background-image: radial-gradient(ellipse at 0% 30%,#28231f 0%,#15161c 45%,#101116 80%);
+  color: var(--tv-paper); font-family: system-ui, sans-serif; text-align: left;
+}
+.tv-transport-ready #tv-lyrics-overlay { bottom: var(--tv-player-height); }
+.tv-chrome-expanded #tv-lyrics-overlay { padding-top: 64px; }
+#tv-lyrics-overlay .tv-lyrics-top { display: flex; align-items: center; gap: 12px; min-width: 0; }
+#tv-lyrics-overlay .tv-lyrics-top .tv-icon-button { width: 30px; height: 30px; padding: 7px; border: 1px solid #3d3a39; }
+#tv-lyrics-overlay .tv-section-label { font-size: 11px; font-weight: 500; letter-spacing: 3px; color: #d8c9ad; }
+#tv-lyrics-overlay .tv-eyebrow { margin-left: auto; margin-right: 96px; font-size: 9px; letter-spacing: 2px; color: #99948e; }
+.tv-chrome-expanded #tv-lyrics-overlay .tv-eyebrow { margin-right: 0; }
+#tv-lyrics-overlay .tv-lyrics-body { display: grid; grid-template-columns: 31% minmax(0,1fr); grid-template-rows: minmax(0,1fr); gap: 7%; min-height: 0; }
+#tv-lyrics-overlay .tv-song-identity { min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; }
+#tv-lyrics-overlay .tv-cover-art { flex: 0 0 auto; width: min(23vw,28vh); height: min(23vw,28vh); max-width: 260px; max-height: 260px; border-radius: 10px; border: 1px solid #4a4238; margin-bottom: 18px; }
+#tv-lyrics-overlay h1 { color: var(--tv-paper); font-size: clamp(22px,2.5vw,37px); font-weight: 500; letter-spacing: -.6px; line-height: 1.2; margin: 0 0 7px; overflow-wrap: anywhere; max-height: 2.5em; overflow: hidden; }
+#tv-lyrics-overlay .tv-song-artist { font-size: 15px; line-height: 1.4; color: #b9b2a7; margin: 0 0 16px; }
+#tv-lyrics-overlay .tv-lyrics-status { font-size: 10px; line-height: 1.5; color: #98948e; margin: 0; max-width: 95%; }
+#tv-lyrics-overlay .tv-lyrics-scroll { min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: #504a41 transparent; scroll-padding: 8px; }
+#tv-lyrics-overlay .tv-lyrics-scroll::-webkit-scrollbar { width: 3px; }
+#tv-lyrics-overlay .tv-lyrics-scroll::-webkit-scrollbar-thumb { background: #504a41; border-radius: 4px; }
 #tv-lyrics-overlay braccato-lyrics { display: block; }
 #tv-lyrics-overlay .blyrics-container {
-  padding-top: var(--blyrics-padding-top, 2rem);
+  padding-top: var(--blyrics-padding-top,2rem);
   --blyrics-font-family: system-ui, sans-serif;
-  --blyrics-font-size: clamp(28px, 3.2vw, 64px);
-  --blyrics-line-height: 1.35;
-  --blyrics-padding: 0.7rem;
-  --blyrics-lyric-active-color: #f4f7f4;
-  --blyrics-lyric-inactive-color: #7f959a;
+  --blyrics-font-size: clamp(26px,3.2vw,50px);
+  --blyrics-line-height: 1.38;
+  --blyrics-padding: .65rem;
+  --blyrics-lyric-active-color: #f2eee6;
+  --blyrics-lyric-inactive-color: #74716e;
   --blyrics-glow-color: transparent;
 }
-#tv-lyrics-overlay .tv-plain-lyrics { white-space: pre-wrap; font-size: 32px; line-height: 1.7; padding: 24px 0; }
-#tv-lyrics-overlay footer { padding-top: 14px; color: #a5b8bc; font-size: 16px; }
-@media (max-width: 1000px) {
-  #tv-lyrics-overlay h1 { font-size: 23px; }
-  #tv-lyrics-overlay footer, #tv-lyrics-overlay .tv-eyebrow { font-size: 13px; }
+#tv-lyrics-overlay .tv-plain-lyrics { white-space: pre-wrap; font-size: clamp(23px,2.8vw,40px); line-height: 1.65; color: #d6d0c7; padding: 16px 8px; }
+#tv-lyrics-overlay footer { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-width: 0; color: #9a958b; font-size: 10px; letter-spacing: .4px; }
+#tv-lyrics-overlay .tv-remote-hint { white-space: nowrap; }
+#tv-lyrics-overlay .tv-text-button { background: transparent; border: 1px solid #49463f; border-radius: 20px; padding: 7px 13px; color: #d8c9ad; font: 11px system-ui,sans-serif; cursor: pointer; }
+#tv-lyrics-overlay .tv-text-button:hover, #tv-lyrics-overlay .tv-text-button:focus { background: #302d29; outline: 1px solid var(--tv-accent); }
+#tv-lyrics-overlay .tv-song-identity .tv-text-button { margin-top: 12px; }
+#tv-lyrics-overlay .tv-lyrics-empty { min-height: 90%; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #85817c; text-align: center; font-size: 16px; letter-spacing: .2px; }
+#tv-lyrics-overlay .tv-empty-mark { color: #cbb792; font-size: 38px; opacity: .6; }
+@media (max-height: 450px) {
+  #tv-lyrics-overlay { gap: 10px; padding-top: 14px; padding-bottom: 8px; }
+  .tv-chrome-expanded #tv-lyrics-overlay { padding-top: 58px; }
+  #tv-lyrics-overlay .tv-cover-art { width: 23vh; height: 23vh; margin-bottom: 10px; }
+  #tv-lyrics-overlay .tv-song-artist { margin-bottom: 9px; font-size: 13px; }
+}
+@media (max-width: 700px) {
+  #tv-transport { gap: 8px; padding-left: 12px; padding-right: 12px; }
+  #tv-transport .tv-transport-artwork { display: none; }
+  #tv-transport .tv-transport-extra { gap: 5px; }
+  #tv-transport .tv-transport-controls { gap: 2px; }
+  #tv-lyrics-overlay .tv-lyrics-body { grid-template-columns: 28% minmax(0,1fr); gap: 5%; }
+  #tv-lyrics-overlay .tv-eyebrow { display: none; }
 }

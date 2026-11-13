@@ -9,10 +9,10 @@
     paused: { get: () => paused },
     ended: { get: () => false }
   });
-  video.play = () => { paused = false; return Promise.resolve(); };
-  video.pause = () => { paused = true; };
+  video.play = () => { paused = false; video.dispatchEvent(new Event('play')); return Promise.resolve(); };
+  video.pause = () => { paused = true; video.dispatchEvent(new Event('pause')); };
   video.dispatchEvent(new Event('loadedmetadata'));
-  setInterval(() => { if (!paused && !document.hidden) position = (position + 0.25) % duration; }, 250);
+  setInterval(() => { if (!paused && !document.hidden) { position = (position + 0.25) % duration; video.dispatchEvent(new Event('timeupdate')); } }, 250);
   const demo = '[00:00.00]Open skies above the room\n[00:05.00]A little space to hear the tune\n[00:10.00]The evening finds a slower pace\n[00:15.00]And every line falls into place\n[00:21.00]Let the quiet carry through\n[00:26.00]One more song, a different view';
   function loadDemo() {
     const request = TvMusic.getLyricsRequest();
@@ -20,9 +20,17 @@
     const status = document.querySelector('.tv-lyrics-status');
     if (status) status.textContent = 'Original demo text · Simulated clock';
   }
-  document.querySelector('#lyrics').onclick = () => { if (TvMusic.toggleLyrics()) loadDemo(); };
+  function chrome(expanded) {
+    document.querySelector('.demo-bar').hidden = !expanded;
+    document.querySelector('#controls').hidden = expanded;
+    TvMusic.setChromeExpanded(expanded);
+  }
+  document.querySelector('#controls').onclick = () => chrome(true);
+  document.querySelector('#hide').onclick = () => chrome(false);
+  document.querySelector('#lyrics').onclick = () => { chrome(false); if (TvMusic.toggleLyrics()) loadDemo(); };
   document.querySelector('#browse').onclick = () => TvMusic.back();
   document.querySelector('#play').onclick = () => TvMusic.media('playpause');
+  document.querySelector('.tv-lyrics-toggle').addEventListener('click', () => { if (TvMusic.isLyricsVisible()) loadDemo(); });
   document.addEventListener('keydown', event => {
     if (!TvMusic.isLyricsVisible()) return;
     const directions = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };

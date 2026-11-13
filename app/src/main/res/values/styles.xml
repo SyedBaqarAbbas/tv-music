@@ -1,12 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="AppTheme" parent="android:style/Theme.Material.NoActionBar">
-        <item name="android:fontFamily">sans</item>
-        <item name="android:colorAccent">#B7F36B</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:colorAccent">#CBB792</item>
         <item name="android:windowActionModeOverlay">true</item>
-        <item name="android:windowBackground">#101310</item>
+        <item name="android:windowBackground">#101116</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:navigationBarColor">#101310</item>
-        <item name="android:statusBarColor">#101310</item>
+        <item name="android:navigationBarColor">#101116</item>
+        <item name="android:statusBarColor">#101116</item>
+        <item name="android:textColorPrimary">#F2EEE6</item>
+        <item name="android:textColorSecondary">#A9A6A0</item>
+    </style>
+    <style name="AppDialogTheme" parent="android:style/Theme.Material.Dialog.Alert">
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:colorAccent">#CBB792</item>
+        <item name="android:windowBackground">#191A20</item>
+        <item name="android:colorBackground">#191A20</item>
+        <item name="android:textColorPrimary">#F2EEE6</item>
+        <item name="android:textColorSecondary">#A9A6A0</item>
+        <item name="android:windowMinWidthMajor">65%</item>
+        <item name="android:windowMinWidthMinor">65%</item>
     </style>
 </resources>

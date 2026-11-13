@@ -2,7 +2,7 @@
 
 An experimental standalone Android TV launcher for the YouTube Music website, with remote navigation and the actual Better Lyrics renderer, [Braccato](https://github.com/better-lyrics/braccato). Initial hardware target: your TCL Android TV 11, firmware `V8-R51AT01-LF1V126.020732`.
 
-The source foundation and offline UI preview are implemented. The initial build has been installed on your TCL and signed-out playback has been confirmed. It remains an experimental player; extended performance and compatibility testing is still needed. Google sign-in in embedded WebViews is unsupported; opening a browser does not transfer its session into this app. There is no official standalone YouTube Music playback API integrated here.
+Version 0.3 adds a warm charcoal interface, a collapsible command strip, an artwork-and-lyrics listening room, and compact playback controls. It has been installed and visually reviewed on your TCL. It remains an experimental player; extended performance and compatibility testing is still needed. Google sign-in in embedded WebViews is unsupported; opening a browser does not transfer its session into this app. There is no official standalone YouTube Music playback API integrated here.
 
 ## Lightweight development
 
@@ -39,7 +39,11 @@ After enabling developer options and network debugging on the TV, use the addres
 .tools/android-sdk/platform-tools/adb shell am start -n dev.ytmusictv/.MainActivity
 ```
 
-The app also appears in the TV launcher. The directional pad moves a visible cursor; hold an arrow to move faster, and press OK to click. Keep moving at an edge to scroll. Menu returns to the native toolbar; Down enters the player again. Up past the top returns to the toolbar after the page is scrolled to the top. Search opens the TV keyboard. Lyrics opens the lyrics screen; Back returns to browsing. The fixed playback strip provides Previous, Play/Pause, Next, a seek slider, and elapsed/total times. Clicking a timed lyric seeks to that line. Home/backgrounding pauses playback in this prototype.
+The app also appears in the TV launcher. The directional pad moves a visible cursor; hold an arrow to move faster, and press OK to click. Keep moving at an edge to scroll. Menu toggles the command strip; Hide or Down collapses it to the corner Controls button. Its preference is remembered. Search opens the TV keyboard and navigates within YouTube Music to preserve playback. Home in the command strip also preserves playback; the remote's system Home button pauses the app.
+
+Lyrics, or the lyrics icon in the playback strip, opens the listening room; Back returns to browsing. Previous, Play/Pause, Next, the seek rail, and elapsed/total times remain visible. Clicking a timed lyric seeks to that line; Follow song restores automatic scrolling after browsing lyrics manually. Missing or failed lyrics have a Try again action. Artwork has a local fallback and uses modest thumbnail sizes.
+
+Account explains the sign-in limitation and can launch the installed official YouTube TV app, where choosing Music provides Google's account experience. That app runs separately from this lyrics view. Browser-sign-in experimentation is deferred; no user-agent disguise, credential collection, or cookie importing is implemented.
 
 ## Lyrics and resource limits
 
@@ -63,7 +67,11 @@ Parser checks cover repeated timestamps, offsets, instrumental gaps, malformed t
 
 Hardware checks on this TCL use Android TV 11 and Android System WebView 157. The visible cursor and complete playback strip have been observed on-device; aespa's LEMONADE lyrics were fetched and rendered. YouTube's ES5 custom-element adapter requires constructing Braccato's registered class directly, rather than using `document.createElement` for that tag.
 
-Continue testing search, cursor reachability, seeking, track changes, lyrics timing, and returning from Home. After 15–30 minutes of playback, inspect memory and frame statistics:
+The 0.3 review includes 134 Firefox checks, four parser tests, 25 matching checks, Android compilation, and Android lint. Physical TV checks cover collapsed/expanded controls, Search and cancellation, playback-preserving Search/Home, Play/Pause, Next/Previous, seeking and lyric-line seeks, artwork, lyrics open/close, Home/resume, the Account/More/Remote guide dialogs, and network error/retry recovery. Untimed and error lyric presentations were also injected as controlled fixtures, visually reviewed, and restored through the real native lyric lookup. This does not certify Google account sign-in or every upstream website variation.
+
+The TV review caught a host-page CSS sizing mismatch, an unwanted before-unload prompt during Search, and the initial dialog focus indicator; these were corrected. Local screenshots and JSON check reports are under ignored `.tools/design-qa/`.
+
+For sustained performance validation, run 15–30 minutes of playback and inspect memory and frame statistics:
 
 ```sh
 .tools/android-sdk/platform-tools/adb shell dumpsys meminfo dev.ytmusictv

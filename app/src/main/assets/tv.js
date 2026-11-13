@@ -34,11 +34,15 @@
 
   if (typeof module !== "undefined" && module.exports) module.exports = { parseLrc: parseLrc };
   if (typeof document === "undefined" || window.TvMusic) return;
+  document.documentElement.classList.add('tv-app');
 
   var focused = null, overlay = null, lyrics = null, status = null, heading = null;
   var timer = null, activeTrack = "", suspended = false, latestRequest = null;
   var savedLyrics = null, savedPlain = "", savedStatus = "", plain = null, scroller = null;
   var transport = null, transportTitle = null, transportTime = null, transportPlay = null, transportSeek = null;
+  var transportArtist = null, transportArtwork = null, lyricsArtwork = null, artistLabel = null;
+  var lyricsBody = null, lyricsRetry = null, lyricsFollow = null, emptyState = null, retryNonce = 0;
+  var lastArtwork = '', lastTrackStamp = '', renderFailure = false;
   var lastTransportSecond = -1;
   var SELECTOR = 'a[href],button,input,[role="button"],[role="tab"],[tabindex="0"]';
 
@@ -63,9 +67,99 @@
     if (!title || !artist || !video || !isFinite(video.duration)) return null;
     // Player links are safer than the page URL while browsing during playback.
     var link = bar && bar.querySelector('a[href*="watch?v="]');
-    var id = link ? link.getAttribute("href") : title + "\n" + artist;
+    var videoId = '';
+    try {
+      var sitePlayer = document.querySelector('#movie_player');
+      var details = sitePlayer && sitePlayer.getVideoData && sitePlayer.getVideoData();
+      videoId = clean(details && details.video_id);
+    } catch (error) { }
+    var id = link ? link.getAttribute("href") : videoId || title + "\n" + artist;
     return { trackId: clean(id), title: title, artist: artist,
-      album: clean(md && md.album), duration: Math.round(video.duration) };
+      album: clean(md && md.album), duration: Math.round(video.duration), retryNonce: retryNonce };
+  }
+
+  function node(tag, className, text) {
+    var element = document.createElement(tag);
+    if (className) element.className = className;
+    if (text) element.textContent = text;
+    return element;
+  }
+  var iconPaths = {
+    play: 'M9 5l11 7-11 7z', pause: 'M8 5v14M16 5v14',
+    previous: 'M6 5v14M19 5L8 12l11 7z', next: 'M18 5v14M5 5l11 7-11 7z',
+    lyrics: 'M4 6h16M4 12h11M4 18h14', back: 'M14 5l-7 7 7 7',
+    retry: 'M20 7v5h-5M19 12a7 7 0 1 0-2 5', follow: 'M12 3v18M3 12h18M8 8l4 4 4-4',
+    note: 'M9 17V5l10-2v12M9 8l10-2M9 17c0 2-2 3-4 3s-3-1-3-2 2-3 4-3 3 1 3 2M19 15c0 2-2 3-4 3s-3-1-3-2 2-3 4-3 3 1 3 2'
+  };
+  function setIcon(button, kind) {
+    while (button.firstChild) button.removeChild(button.firstChild);
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
+    var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', iconPaths[kind]); path.setAttribute('fill', kind === 'play' ? 'currentColor' : 'none');
+    path.setAttribute('stroke', 'currentColor'); path.setAttribute('stroke-width', '1.7');
+    path.setAttribute('stroke-linejoin', 'round'); path.setAttribute('stroke-linecap', 'round');
+    svg.appendChild(path); button.appendChild(svg);
+  }
+  function iconButton(label, kind, action) {
+    var button = node('button', 'tv-icon-button'); button.type = 'button';
+    button.setAttribute('aria-label', label); button.title = label;
+    setIcon(button, kind); button.addEventListener('click', action); return button;
+  }
+  function artwork(className) {
+    var frame = node('div', 'tv-artwork ' + className);
+    var placeholder = node('span', 'tv-artwork-placeholder');
+    setIcon(placeholder, 'note');
+    var img = node('img'); img.alt = ''; img.decoding = 'async';
+    img.addEventListener('error', function () { img.hidden = true; frame.classList.add('tv-artwork-empty'); });
+    img.addEventListener('load', function () { img.hidden = false; frame.classList.remove('tv-artwork-empty'); });
+    img.hidden = true; frame.classList.add('tv-artwork-empty');
+    frame.append(placeholder, img); return frame;
+  }
+  function artworkUrl() {
+    var md = navigator.mediaSession && navigator.mediaSession.metadata;
+    var image = md && md.artwork && md.artwork[0];
+    var barImage = document.querySelector('ytmusic-player-bar img');
+    var source = clean(image && image.src) || clean(barImage && barImage.getAttribute('src'));
+    if (!source || source.indexOf('data:') === 0) {
+      try {
+        var sitePlayer = document.querySelector('#movie_player');
+        var response = sitePlayer && sitePlayer.getPlayerResponse && sitePlayer.getPlayerResponse();
+        var thumbnail = response && response.videoDetails && response.videoDetails.thumbnail;
+        var thumbnails = thumbnail && thumbnail.thumbnails;
+        if (thumbnails && thumbnails.length) {
+          var selected = thumbnails[0];
+          for (var i = 0; i < thumbnails.length; i++) {
+            if (thumbnails[i].width <= 512) selected = thumbnails[i];
+          }
+          source = clean(selected.url);
+        }
+      } catch (error) { }
+    }
+    try {
+      var url = new URL(source, location.href);
+      if (!source || url.protocol !== 'https:') return '';
+      // Size an existing YouTube thumbnail down rather than decoding a 4K image.
+      return url.href.replace(/=w\d+-h\d+[^?#]*/, '=w480-h480-l90-rj');
+    } catch (error) { return ''; }
+  }
+  function updateArtwork(force) {
+    var source = artworkUrl();
+    if (!force && source === lastArtwork) return;
+    lastArtwork = source;
+    [transportArtwork, lyricsArtwork].forEach(function (frame) {
+      if (!frame) return;
+      var image = frame.querySelector('img');
+      if (source) { if (image.getAttribute('src') !== source) image.src = source; }
+      else { image.removeAttribute('src'); image.hidden = true; frame.classList.add('tv-artwork-empty'); }
+    });
+  }
+  function notifyLyricsState() {
+    if (window.__musicForTvNative) window.prompt('tv-music:lyrics-state', visible() ? 'on' : 'off');
+  }
+  function setChromeExpanded(expanded) {
+    document.documentElement.classList.toggle('tv-chrome-expanded', !!expanded);
+    return !!expanded;
   }
 
   function visible() { return !!overlay && !overlay.hidden; }
@@ -205,30 +299,45 @@
     transport.id = 'tv-transport';
     transport.hidden = true;
     transport.setAttribute('aria-label', 'Playback controls');
+    transportArtwork = artwork('tv-transport-artwork');
     transportTitle = document.createElement('span');
     transportTitle.className = 'tv-transport-title';
     function button(label, action) {
-      var el = document.createElement('button');
-      el.type = 'button'; el.textContent = label;
-      el.addEventListener('click', function () { media(action); updateTransport(true); });
-      transport.appendChild(el);
+      var el = iconButton(label, action === 'playpause' ? 'play' : action, function () {
+        media(action); updateTransport(true);
+      });
+      controls.appendChild(el);
       return el;
     }
+    var info = node('div', 'tv-transport-info');
+    transportArtist = node('span', 'tv-transport-artist');
+    info.append(transportTitle, transportArtist);
+    var controls = node('div', 'tv-transport-controls');
     button('Previous', 'previous');
     transportPlay = button('Play', 'playpause');
+    transportPlay.classList.add('tv-play-button');
     button('Next', 'next');
-    transport.appendChild(transportTitle);
     transportSeek = document.createElement('input');
     transportSeek.type = 'range'; transportSeek.min = '0'; transportSeek.max = '1000'; transportSeek.value = '0';
     transportSeek.setAttribute('aria-label', 'Seek through song');
     transportSeek.addEventListener('input', function () {
       var video = player();
-      if (video && isFinite(video.duration)) video.currentTime = Number(transportSeek.value) * video.duration / 1000;
+      if (video && isFinite(video.duration)) video.currentTime = Math.max(0, Math.min(1000, Number(transportSeek.value) || 0)) * video.duration / 1000;
       updateTransport(true);
+      tick();
+    });
+    transportSeek.addEventListener('keydown', function (event) {
+      if (event.key !== 'Home' && event.key !== 'End') return;
+      event.preventDefault(); transportSeek.value = event.key === 'Home' ? '0' : '1000';
+      transportSeek.dispatchEvent(new Event('input'));
     });
     transportTime = document.createElement('span');
     transportTime.className = 'tv-transport-time';
-    transport.append(transportSeek, transportTime);
+    var extra = node('div', 'tv-transport-extra');
+    var lyricsToggle = iconButton('Show lyrics', 'lyrics', function () { toggleLyrics(); });
+    lyricsToggle.classList.add('tv-lyrics-toggle');
+    extra.append(transportTime, lyricsToggle);
+    transport.append(transportSeek, transportArtwork, info, controls, extra);
     document.body.appendChild(transport);
   }
   function updateTransport(force) {
@@ -241,13 +350,24 @@
     document.documentElement.classList.toggle('tv-transport-ready', ready);
     if (!ready) return;
     var second = Math.floor(video.currentTime);
-    transportPlay.textContent = video.paused ? 'Play' : 'Pause';
-    if (!force && second === lastTransportSecond) return;
-    lastTransportSecond = second;
+    var label = video.paused ? 'Play' : 'Pause';
+    if (transportPlay.getAttribute('aria-label') !== label) {
+      transportPlay.setAttribute('aria-label', label); transportPlay.title = label;
+      setIcon(transportPlay, video.paused ? 'play' : 'pause');
+    }
     var request = metadata();
+    var trackStamp = request ? request.trackId + request.title + request.artist : '';
+    if (!force && second === lastTransportSecond && trackStamp === lastTrackStamp) return;
+    lastTransportSecond = second;
+    lastTrackStamp = trackStamp;
     transportTitle.textContent = request ? request.title : 'Now playing';
+    transportArtist.textContent = request ? request.artist : '';
     transportTime.textContent = formatTime(video.currentTime) + ' / ' + formatTime(video.duration);
     transportSeek.value = String(Math.round(video.currentTime * 1000 / video.duration));
+    transportSeek.setAttribute('aria-valuetext', formatTime(video.currentTime) + ' of ' + formatTime(video.duration));
+    transportSeek.style.setProperty('--tv-progress', transportSeek.value / 10 + '%');
+    updateArtwork(false);
+    syncLyricsToggle();
   }
   ['timeupdate', 'loadedmetadata', 'durationchange', 'play', 'pause', 'emptied'].forEach(function (name) {
     document.addEventListener(name, function (event) {
@@ -277,17 +397,43 @@
     overlay.setAttribute("aria-label", "Now playing lyrics");
     var label = document.createElement("div");
     label.className = "tv-eyebrow";
-    label.textContent = "NOW PLAYING";
+    label.textContent = "THE LISTENING ROOM";
+    var top = node('div', 'tv-lyrics-top');
+    var back = iconButton('Back to music', 'back', closeLyrics);
+    var section = node('span', 'tv-section-label', 'LYRICS');
+    top.append(back, section, label);
+    var identity = node('aside', 'tv-song-identity');
+    lyricsArtwork = artwork('tv-cover-art');
     heading = document.createElement("h1");
+    artistLabel = node('p', 'tv-song-artist');
     status = document.createElement("p");
     status.className = "tv-lyrics-status";
     scroller = document.createElement("div");
     scroller.className = "tv-lyrics-scroll";
     plain = document.createElement("div");
     plain.className = "tv-plain-lyrics";
+    emptyState = node('div', 'tv-lyrics-empty');
+    emptyState.append(node('span', 'tv-empty-mark', '♪'), node('p', '', 'The words will find you.'));
+    scroller.appendChild(emptyState);
+    lyricsRetry = node('button', 'tv-text-button tv-lyrics-retry', 'Try again'); lyricsRetry.type = 'button'; lyricsRetry.hidden = true;
+    lyricsRetry.addEventListener('click', retryLyrics);
+    identity.append(lyricsArtwork, heading, artistLabel, status, lyricsRetry);
+    lyricsBody = node('div', 'tv-lyrics-body');
+    lyricsBody.append(identity, scroller);
     var hint = document.createElement("footer");
-    hint.textContent = "Arrows Move cursor   ·   OK Click   ·   At an edge Scroll   ·   Menu Toolbar";
-    overlay.append(label, heading, status, scroller, hint);
+    hint.append(node('span', 'tv-remote-hint', 'MENU  Controls     ·     BACK  Music'));
+    lyricsFollow = node('button', 'tv-text-button', 'Follow song'); lyricsFollow.type = 'button';
+    lyricsFollow.setAttribute('aria-label', 'Follow current lyric');
+    lyricsFollow.addEventListener('click', function () {
+      if (!lyrics) return;
+      if (lyrics.renderer && lyrics.renderer.resumeAutoscroll) lyrics.renderer.resumeAutoscroll();
+      var current = lyrics.querySelector('.blyrics--active');
+      if (current) scroller.scrollTop += current.getBoundingClientRect().top
+        - scroller.getBoundingClientRect().top - scroller.clientHeight * 0.3;
+      tick();
+    });
+    hint.append(lyricsFollow);
+    overlay.append(top, lyricsBody, hint);
     document.body.appendChild(overlay);
   }
   function mountRenderer() {
@@ -305,7 +451,9 @@
       if (video && isFinite(event.detail.timeS)) video.currentTime = event.detail.timeS;
     });
     lyrics.addEventListener("braccato:error", function () {
+      renderFailure = true;
       status.textContent = "Lyrics renderer could not start. Try updating Android System WebView.";
+      lyricsRetry.hidden = false;
     });
     scroller.appendChild(lyrics);
     if (savedLyrics) lyrics.lyrics = savedLyrics;
@@ -315,36 +463,91 @@
     stopClock();
     overlay.hidden = true;
     if (lyrics) { lyrics.remove(); lyrics = null; }
+    document.documentElement.classList.remove('tv-lyrics-open');
+    syncLyricsToggle();
+    notifyLyricsState();
     return true;
   }
   function toggleLyrics() {
     if (closeLyrics()) return false;
     if (!overlay) buildOverlay();
     overlay.hidden = false;
+    document.documentElement.classList.add('tv-lyrics-open');
     clearFocus();
-    mountRenderer();
+    renderFailure = false;
+    try { mountRenderer(); } catch (error) {
+      renderFailure = true;
+    }
     status.textContent = savedStatus || (latestRequest ? "Finding lyrics…" : "Play a song to load lyrics.");
     if (savedPlain) { plain.textContent = savedPlain; scroller.appendChild(plain); }
     getLyricsRequest();
+    if (renderFailure) { status.textContent = 'The lyrics view could not start. Try again.'; lyricsRetry.hidden = false; }
+    updateArtwork(true);
+    syncLyricsToggle();
     startClock();
+    notifyLyricsState();
+    return true;
+  }
+  function syncLyricsToggle() {
+    var button = transport && transport.querySelector('.tv-lyrics-toggle');
+    if (!button) return;
+    button.setAttribute('aria-label', visible() ? 'Hide lyrics' : 'Show lyrics');
+    button.title = visible() ? 'Hide lyrics' : 'Show lyrics';
+    button.setAttribute('aria-pressed', String(visible()));
+  }
+  function retryLyrics() {
+    if (!visible()) return false;
+    retryNonce++;
+    savedStatus = 'Finding lyrics…'; status.textContent = savedStatus;
+    emptyState.hidden = false;
+    lyricsRetry.hidden = true;
+    if (renderFailure) {
+      if (lyrics) { lyrics.remove(); lyrics = null; }
+      renderFailure = false;
+      try { mountRenderer(); } catch (error) { renderFailure = true; }
+    }
+    notifyLyricsState();
     return true;
   }
   function getLyricsRequest() {
     if (!visible()) return null;
     var request = metadata();
-    if (!request) return null;
+    if (!request) {
+      if (activeTrack) {
+        activeTrack = ''; latestRequest = null; savedLyrics = null; savedPlain = ''; savedStatus = '';
+        if (lyrics) lyrics.lyrics = [];
+        plain.remove();
+        lastArtwork = '';
+        [transportArtwork, lyricsArtwork].forEach(function (frame) {
+          if (!frame) return;
+          var image = frame.querySelector('img'); image.removeAttribute('src'); image.hidden = true;
+          frame.classList.add('tv-artwork-empty');
+        });
+      }
+      lyricsRetry.hidden = true;
+      heading.textContent = 'Nothing playing'; artistLabel.textContent = 'Choose a song to begin';
+      status.textContent = 'Open Search from the Controls menu.';
+      emptyState.hidden = false;
+      return null;
+    }
     var key = request.trackId + "\n" + request.title + "\n" + request.artist
       + "\n" + request.album + "\n" + request.duration;
     if (key !== activeTrack) {
       activeTrack = key;
+      retryNonce = 0;
+      request.retryNonce = 0;
       savedLyrics = null;
       savedPlain = "";
       savedStatus = "Finding lyrics…";
+      lyricsRetry.hidden = true;
       plain.remove();
       if (lyrics) lyrics.lyrics = [];
       scroller.scrollTop = 0;
-      heading.textContent = request.title + " · " + request.artist;
+      heading.textContent = request.title;
+      artistLabel.textContent = request.artist;
       status.textContent = "Finding lyrics…";
+      emptyState.hidden = false;
+      updateArtwork(true);
     }
     latestRequest = request;
     return request;
@@ -352,23 +555,28 @@
   function receiveLyrics(payload) {
     var request = getLyricsRequest();
     if (!request || payload.trackId !== request.trackId || payload.title !== request.title
-        || payload.artist !== request.artist) return false;
+        || payload.artist !== request.artist
+        || (Number(payload.retryNonce || 0) !== Number(request.retryNonce || 0))) return false;
     savedLyrics = null;
     savedPlain = "";
     plain.remove();
     if (lyrics) lyrics.lyrics = [];
     status.textContent = "Lyrics by LRCLIB";
+    emptyState.hidden = true;
     if (payload.status === "synced") {
       savedLyrics = parseLrc(payload.syncedLyrics, request.duration);
-      if (lyrics && savedLyrics.length) { lyrics.lyrics = savedLyrics; tick(); }
-      else status.textContent = "Timed lyrics could not be displayed on this WebView.";
+      if (lyrics && savedLyrics.length && !renderFailure) { lyrics.lyrics = savedLyrics; tick(); }
+      else { status.textContent = "Timed lyrics could not be displayed on this WebView."; emptyState.hidden = false; }
     } else if (payload.status === "plain") {
       savedPlain = String(payload.plainLyrics || "").slice(0, 200000);
       plain.textContent = savedPlain;
       scroller.appendChild(plain);
       status.textContent = payload.timingMatched === false
         ? "Lyrics by LRCLIB · Untimed: different recording" : "Lyrics by LRCLIB · Unsynced";
-    } else status.textContent = payload.message || "Lyrics are unavailable for this recording.";
+    } else { status.textContent = payload.message || "Lyrics are unavailable for this recording."; emptyState.hidden = false; }
+    lyricsRetry.hidden = payload.status === 'synced' || payload.status === 'plain' || payload.status === 'instrumental';
+    if (renderFailure) lyricsRetry.hidden = false;
+    if (payload.status === 'synced' && !savedLyrics.length) lyricsRetry.hidden = false;
     savedStatus = status.textContent;
     return true;
   }
@@ -380,15 +588,34 @@
     if (button) { button.click(); return true; }
     return false;
   }
+  function searchFor(query) {
+    var box = document.querySelector('ytmusic-search-box');
+    var input = box && box.querySelector('input');
+    if (!box || !input || typeof box.navigateToQueryResults !== 'function') return false;
+    closeLyrics();
+    input.value = clean(query);
+    if (!input.value) return false;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    box.navigateToQueryResults();
+    return true;
+  }
+  function home() {
+    closeLyrics();
+    var app = document.querySelector('ytmusic-app');
+    if (app && typeof app.navigate === 'function') { app.navigate('FEmusic_home'); return true; }
+    location.href = 'https://music.youtube.com/';
+    return true;
+  }
   document.addEventListener("visibilitychange", function () {
     if (document.hidden) stopClock(); else { startClock(); updateTransport(true); }
   });
   window.TvMusic = {
-    move: move, activate: activate, search: search, media: media, scrollAt: scrollAt,
+    move: move, activate: activate, search: search, searchFor: searchFor, media: media, scrollAt: scrollAt,
+    setChromeExpanded: setChromeExpanded, retryLyrics: retryLyrics,
     toggleLyrics: toggleLyrics, isLyricsVisible: visible,
     getLyricsRequest: getLyricsRequest, receiveLyrics: receiveLyrics,
     back: closeLyrics,
-    home: function () { location.href = "https://music.youtube.com/"; },
+    home: home,
     suspend: function () { suspended = true; stopClock(); var video = player(); if (video) video.pause(); },
     resume: function () { suspended = false; startClock(); updateTransport(true); }
   };

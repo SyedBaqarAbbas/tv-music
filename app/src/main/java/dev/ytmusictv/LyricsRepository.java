@@ -51,12 +51,13 @@ public final class LyricsRepository implements AutoCloseable {
         final String artist = field(metadata, "artist");
         final String album = field(metadata, "album");
         final int duration = (int) Math.round(metadata.optDouble("duration", 0));
+        final int retryNonce = Math.max(0, metadata.optInt("retryNonce", 0));
         final String key = title + "\n" + artist + "\n" + album + "\n" + duration;
         final long token = generation.incrementAndGet();
         try {
             worker.execute(() -> {
                 if (cancelled(token)) return;
-                JSONObject result = cache.get(key);
+                JSONObject result = retryNonce > 0 ? null : cache.get(key);
                 if (result == null) {
                     result = fetch(title, artist, album, duration, token);
                     if (!cancelled(token) && !"error".equals(result.optString("status"))) cache.put(key, result);
@@ -67,6 +68,7 @@ public final class LyricsRepository implements AutoCloseable {
                     payload.put("trackId", trackId);
                     payload.put("title", title);
                     payload.put("artist", artist);
+                    payload.put("retryNonce", retryNonce);
                     main.post(() -> { if (!cancelled(token)) callback.onResult(payload); });
                 } catch (Exception ignored) { }
             });

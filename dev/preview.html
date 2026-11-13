@@ -2,28 +2,36 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>TV Music · Offline preview</title>
+<title>Music / TV · Listening room</title>
 <link rel="stylesheet" href="../app/src/main/assets/lyrics/core.css">
 <link rel="stylesheet" href="../app/src/main/assets/tv.css">
 <style>
   * { box-sizing: border-box; }
-  body { margin: 0; background: #101b20; color: #f4f7f4; font: 20px system-ui,sans-serif; }
-  nav { display: flex; gap: 12px; align-items: center; padding: 18px 4vw; }
-  nav strong { flex: 1; color: #b9e5c8; }
-  button { background: #25383c; color: #f4f7f4; border: 2px solid #47616a; border-radius: 8px; padding: 10px 20px; font: inherit; }
-  button:focus { outline: 4px solid #b9e5c8; }
-  main { padding: 10vh 10vw; }
-  h1 { font-size: 64px; margin: 0 0 14px; }
-  p { color: #a5b8bc; max-width: 800px; line-height: 1.6; }
-  #tv-lyrics-overlay { top: 82px; }
+  body { margin: 0; background: #101116; color: #f2eee6; font: 18px system-ui,sans-serif; }
+  .demo-bar { position: fixed; left: 14px; right: 14px; top: 12px; z-index: 2147483647; height: 44px; display: flex; align-items: center; gap: 5px; padding: 4px 8px 4px 18px; background: #191a21; border: 1px solid #36363d; border-radius: 9px; }
+  .demo-bar strong { margin-right: auto; font-size: 12px; font-weight: 500; letter-spacing: 2px; }
+  .demo-bar button, #controls { color: #e8e2d8; border: 1px solid #39383a; border-radius: 6px; padding: 7px 15px; font: 12px system-ui,sans-serif; background: transparent; cursor: pointer; }
+  .demo-bar button:hover, #controls:hover { background: #302d29; }
+  .demo-bar button:focus, #controls:focus { outline: 2px solid #cbb792; }
+  #controls { position: fixed; z-index: 2147483647; top: 12px; right: 14px; background: #191a21; border-radius: 16px; }
+  .demo-bar[hidden], #controls[hidden] { display: none; }
+  main { max-width: 1120px; margin: 12vh auto; padding: 50px 6vw; }
+  main .eyebrow { font-size: 11px; letter-spacing: 3px; color: #cbb792; }
+  main h1 { font-size: clamp(48px,6vw,78px); line-height: 1.05; font-weight: 400; letter-spacing: -3px; margin: 25px 0; }
+  main p { max-width: 480px; line-height: 1.7; color: #a9a39a; font-size: 16px; }
+  .demo-covers { display: flex; gap: 24px; margin-top: 36px; }
+  .demo-covers span { display: flex; align-items: flex-end; width: 190px; height: 150px; border-radius: 9px; padding: 18px; color: #e9e0cf; font-size: 15px; background: linear-gradient(140deg,#86644b,#252c3e 75%); }
+  .demo-covers span:nth-child(2) { background: linear-gradient(140deg,#4e6263,#212633 75%); }
+  .demo-covers span:nth-child(3) { background: linear-gradient(140deg,#6e566c,#25212b 75%); }
   video,ytmusic-player-bar { display: none; }
 </style>
-<nav><strong>TV Music / UI preview</strong><button id="browse">Browse</button><button id="lyrics">Lyrics</button><button id="play">Play / pause</button></nav>
+<button id="controls" aria-label="Open controls">Controls</button>
+<nav class="demo-bar" hidden><strong>MUSIC / TV</strong><button id="browse">Home</button><button id="lyrics">Lyrics</button><button id="play">Play / pause</button><button id="hide">Hide ↑</button></nav>
 <main>
-  <p>OFFLINE DEVELOPMENT PREVIEW</p>
-  <h1>Room to listen.</h1>
-  <p>Original demo text and a simulated playback clock. This preview plays no audio and does not connect to YouTube or a lyrics service.</p>
-  <p>Choose Lyrics, then use arrows to scroll or seek, Enter to play or pause, and Escape to close this demo. The Android app provides a cursor controlled by your TV remote.</p>
+  <p class="eyebrow">YOUR EVENING, UNINTERRUPTED</p>
+  <h1>A little room<br>for the music.</h1>
+  <p>Open Controls, choose Lyrics, and settle in. This offline preview uses original demo text and a simulated clock. No audio plays.</p>
+  <div class="demo-covers"><span>Slow evenings</span><span>Open skies</span><span>After hours</span></div>
 </main>
 <video></video>
 <ytmusic-player-bar><span class="title">Open skies</span><span class="byline">TV Music Demo</span></ytmusic-player-bar>

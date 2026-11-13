@@ -12,6 +12,7 @@ import argparse,json,shutil,subprocess,threading,tempfile
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--firefox',default=shutil.which('firefox'),help='Firefox executable (default: system Firefox)')
 parser.add_argument('--preview-screenshot',type=Path,help='Optional PNG path; no screenshot is saved by default')
+parser.add_argument('--narrow-screenshot',type=Path,help='Optional PNG at the TV viewport of 916 by 454 CSS pixels')
 parser.add_argument('--report',type=Path,help='Optional JSON report path')
 args=parser.parse_args()
 if not args.firefox:
@@ -26,10 +27,10 @@ const originalSetInterval=window.setInterval,originalClearInterval=window.clearI
 window.setInterval=function(fn,ms){const id=originalSetInterval(fn,ms);window.__intervals.add(id);return id};
 window.clearInterval=function(id){window.__intervals.delete(id);return originalClearInterval(id)};
 window.__hidden=false;Object.defineProperty(document,'hidden',{configurable:true,get:()=>window.__hidden});
-window.__media={time:3,paused:false,ended:false,plays:0,pauses:0};
+window.__media={time:3,duration:180,paused:false,ended:false,plays:0,pauses:0};
 window.__session={metadata:null};Object.defineProperty(navigator,'mediaSession',{configurable:true,value:window.__session});
 const video=document.querySelector('video');
-Object.defineProperties(video,{duration:{get:()=>180},currentTime:{get:()=>__media.time,set:v=>__media.time=v},paused:{get:()=>__media.paused},ended:{get:()=>__media.ended}});
+Object.defineProperties(video,{duration:{get:()=>__media.duration},currentTime:{get:()=>__media.time,set:v=>__media.time=v},paused:{get:()=>__media.paused},ended:{get:()=>__media.ended}});
 video.play=function(){__media.paused=false;__media.plays++;return Promise.resolve()};
 video.pause=function(){__media.paused=true;__media.pauses++};
 Array.prototype.at=undefined;Array.prototype.findLast=undefined;Object.hasOwn=undefined;String.prototype.replaceAll=undefined;
@@ -47,6 +48,7 @@ tests=r'''
  const payload=(request,extra)=>Object.assign({},request,extra);
  function track(title,artist,id){document.querySelector('ytmusic-player-bar .title').textContent=title;document.querySelector('ytmusic-player-bar .byline a').textContent=artist;document.querySelector('ytmusic-player-bar .title').setAttribute('href','/watch?v='+id)}
  try {
+ const hostReset=document.createElement('style');hostReset.textContent='* { box-sizing: content-box; }';document.head.appendChild(hostReset);
  check('global export survives native-style injection wrapper',window.BraccatoTV&&BraccatoTV.version==='1.21.5');
  check('initial visibility false',!TvMusic.isLyricsVisible());
  check('initial overlay open return',TvMusic.toggleLyrics()===true&&TvMusic.isLyricsVisible());
@@ -71,10 +73,14 @@ tests=r'''
  snapshot=TvMusic.getLyricsRequest();
  check('unloaded teaser does not replace loaded main video',snapshot&&snapshot.duration===180,snapshot);
  TvMusic.media('pause');check('media controls use main video after earlier teaser',__media.paused);TvMusic.media('play');teaser.remove();
- check('overlay CSS applied',getComputedStyle(document.querySelector('#tv-lyrics-overlay')).backgroundColor==='rgb(16, 27, 32)');
+ const overlayStyle=getComputedStyle(document.querySelector('#tv-lyrics-overlay'));
+ check('overlay CSS applied',overlayStyle.position==='fixed'&&(overlayStyle.backgroundImage!=='none'||overlayStyle.backgroundColor!=='rgba(0, 0, 0, 0)'),overlayStyle.backgroundColor);
  check('synced result accepted',TvMusic.receiveLyrics(payload(first,{status:'synced',syncedLyrics:'[00:00.00]First line\n[00:02.00]Second line\n[00:08.00]Third line'}))===true);
  check('actual renderer mounted',view().status==='rendering'&&view().querySelectorAll('.blyrics--line').length===3,view().status);
  check('letter DOM disabled by applied theme',!view().querySelector('.blyrics--letter')&&view().theme.includes('blyrics-letter-wave = false'));
+ const engine=view().renderer,originalResume=engine.resumeAutoscroll;let resumed=0;
+ engine.resumeAutoscroll=function(){resumed++;};document.querySelector('[aria-label="Follow current lyric"]').click();engine.resumeAutoscroll=originalResume;
+ check('Follow song resumes renderer autoscroll',resumed===1,resumed);
  __media.time=3;await delay(320);
  check('clock follows video playback',view().currentTime===3&&view().playing&&window.__intervals.size===1,{time:view().currentTime,playing:view().playing,intervals:window.__intervals.size});
  const oldClock=view().currentTime;
@@ -101,7 +107,65 @@ tests=r'''
  check('plain text preserved after reopen',scroller().textContent.includes('Plain only'));
  TvMusic.receiveLyrics(payload(second,{status:'synced',syncedLyrics:'[00:00]Replacement timed\n[00:02]Next timed'}));
  check('synced response removes plain content',!scroller().querySelector('.tv-plain-lyrics'),scroller().textContent);
- TvMusic.receiveLyrics(payload(second,{status:'unavailable',message:'No lyrics for this recording.'}));
+ TvMusic.receiveLyrics(payload(second,{status:'plain',timingMatched:false,plainLyrics:'Different recording words'}));
+ check('different recording is explicitly untimed',status().includes('Untimed: different recording'),status());
+ TvMusic.receiveLyrics(payload(second,{status:'missing',message:'No lyrics found for this recording.'}));
+ let retry=document.querySelector('.tv-lyrics-retry');
+ check('missing result offers retry',!retry.hidden&&status()==='No lyrics found for this recording.',status());
+ const beforeRetry=TvMusic.getLyricsRequest();
+ check('retry action accepted',TvMusic.retryLyrics()===true);
+ const afterRetry=TvMusic.getLyricsRequest();
+ check('retry nonce changes native request identity',Number(afterRetry.retryNonce)===Number(beforeRetry.retryNonce)+1,{before:beforeRetry.retryNonce,after:afterRetry.retryNonce});
+ check('stale same-track retry response is rejected',TvMusic.receiveLyrics(payload(beforeRetry,{status:'error',message:'Stale failure'}))===false);
+ check('retry preserves finding status while pending',status()==='Finding lyrics…'&&retry.hidden,status());
+ TvMusic.receiveLyrics(payload(afterRetry,{status:'error',message:'Connection unavailable.'}));
+ check('network error keeps message and retry',status()==='Connection unavailable.'&&!retry.hidden,status());
+ TvMusic.receiveLyrics(payload(afterRetry,{status:'synced',syncedLyrics:'malformed lyrics without timestamps'}));
+ check('invalid synced response offers retry',!retry.hidden&&status().includes('could not be displayed'),status());
+ TvMusic.receiveLyrics(payload(afterRetry,{status:'instrumental',message:'Instrumental track'}));
+ check('instrumental result has no retry prompt',status()==='Instrumental track'&&retry.hidden,status());
+ const transport=document.querySelector('#tv-transport');
+ check('component roots override host content-box reset',getComputedStyle(transport).boxSizing==='border-box'&&getComputedStyle(document.querySelector('#tv-lyrics-overlay')).boxSizing==='border-box');
+ check('transport total height stays exactly 78 pixels',Math.abs(transport.getBoundingClientRect().height-78)<0.1,transport.getBoundingClientRect().height);
+ check('play button keeps the warm-white visual hierarchy',getComputedStyle(transport.querySelector('.tv-play-button')).backgroundColor==='rgb(242, 238, 230)',getComputedStyle(transport.querySelector('.tv-play-button')).backgroundColor);
+ const controls=Array.from(transport.querySelectorAll('.tv-transport-controls button'));
+ check('transport icons expose accessible labels',controls.length===3&&controls.every(b=>b.getAttribute('aria-label')&&b.querySelector('svg[aria-hidden="true"]')));
+ const previous=document.createElement('button'),next=document.createElement('button');
+ previous.className='previous-button';next.className='next-button';let previousCount=0,nextCount=0;
+ previous.onclick=()=>previousCount++;next.onclick=()=>nextCount++;
+ document.querySelector('ytmusic-player-bar').append(previous,next);
+ transport.querySelector('[aria-label="Previous"]').click();transport.querySelector('[aria-label="Next"]').click();
+ check('previous and next icon buttons reach official controls',previousCount===1&&nextCount===1,{previousCount,nextCount});previous.remove();next.remove();
+ const range=transport.querySelector('input[type="range"]');
+ range.value='2000';range.dispatchEvent(new Event('input'));check('seek upper bound is recording duration',__media.time===__media.duration,__media.time);
+ range.value='-20';range.dispatchEvent(new Event('input'));check('seek lower bound is zero',__media.time===0,__media.time);
+ range.dispatchEvent(new KeyboardEvent('keydown',{key:'End',bubbles:true,cancelable:true}));check('End seeks recording end',__media.time===__media.duration,__media.time);
+ range.dispatchEvent(new KeyboardEvent('keydown',{key:'Home',bubbles:true,cancelable:true}));check('Home seeks recording start',__media.time===0,__media.time);
+ check('seek range exposes spoken time',range.getAttribute('aria-valuetext')==='0:00 of 3:00',range.getAttribute('aria-valuetext'));
+ const artFrames=()=>Array.from(document.querySelectorAll('.tv-artwork'));
+ check('artwork has visible local fallback',artFrames().length===2&&artFrames().every(frame=>frame.classList.contains('tv-artwork-empty')&&frame.querySelector('img').hidden));
+ const sourcePlayer=document.createElement('div');sourcePlayer.id='movie_player';
+ sourcePlayer.getVideoData=()=>({video_id:'actual-movie-player-id'});
+ sourcePlayer.getPlayerResponse=()=>({videoDetails:{thumbnail:{thumbnails:[{url:'https://example.invalid/tiny-thumb.jpg',width:120},{url:'https://example.invalid/medium-thumb.jpg',width:480},{url:'https://example.invalid/huge-thumb.jpg',width:1920}]}}});
+ document.body.appendChild(sourcePlayer);video.dispatchEvent(new Event('loadedmetadata'));
+ check('artwork falls back to a modest movie-player thumbnail',artFrames().every(frame=>frame.querySelector('img').getAttribute('src')==='https://example.invalid/medium-thumb.jpg'));
+ const titleLink=document.querySelector('ytmusic-player-bar .title'),titleHref=titleLink.getAttribute('href');titleLink.removeAttribute('href');
+ check('track identity can fall back to movie-player video data',TvMusic.getLyricsRequest().trackId==='actual-movie-player-id');
+ titleLink.setAttribute('href',titleHref);sourcePlayer.remove();video.dispatchEvent(new Event('loadedmetadata'));TvMusic.getLyricsRequest();
+ const emptyBarImage=document.createElement('img');document.querySelector('ytmusic-player-bar').appendChild(emptyBarImage);video.dispatchEvent(new Event('loadedmetadata'));
+ check('an empty source image never requests the current page as artwork',artFrames().every(frame=>!frame.querySelector('img').getAttribute('src')));emptyBarImage.remove();
+ __session.metadata={artwork:[{src:'javascript:alert(1)'}]};video.dispatchEvent(new Event('loadedmetadata'));
+ check('non-HTTPS artwork is rejected',artFrames().every(frame=>!frame.querySelector('img').getAttribute('src')));
+ __session.metadata={artwork:[{src:'http://example.invalid/art.png'}]};video.dispatchEvent(new Event('loadedmetadata'));
+ check('insecure HTTP artwork is rejected',artFrames().every(frame=>!frame.querySelector('img').getAttribute('src')));
+ __session.metadata={artwork:[{src:'https://example.invalid/art=w1920-h1920-l90-rj'}]};video.dispatchEvent(new Event('loadedmetadata'));
+ check('HTTPS artwork is sized for modest decoding',artFrames().every(frame=>frame.querySelector('img').getAttribute('src')==='https://example.invalid/art=w480-h480-l90-rj'));
+ artFrames().forEach(frame=>frame.querySelector('img').dispatchEvent(new Event('load')));
+ check('loaded artwork replaces local fallback',artFrames().every(frame=>!frame.classList.contains('tv-artwork-empty')&&!frame.querySelector('img').hidden));
+ artFrames().forEach(frame=>frame.querySelector('img').dispatchEvent(new Event('error')));
+ check('failed artwork restores local fallback',artFrames().every(frame=>frame.classList.contains('tv-artwork-empty')&&frame.querySelector('img').hidden));
+ __session.metadata=null;video.dispatchEvent(new Event('loadedmetadata'));
+ TvMusic.receiveLyrics(payload(TvMusic.getLyricsRequest(),{status:'unavailable',message:'No lyrics for this recording.'}));
  TvMusic.back();TvMusic.toggleLyrics();
  check('unavailable status preserved after reopen',status()==='No lyrics for this recording.',status());
  check('single clock after multiple reopen',window.__intervals.size===1,window.__intervals.size);
@@ -144,7 +208,24 @@ tests=r'''
  const lyricBox=scroller().getBoundingClientRect();
  const lyricScroll=TvMusic.scrollAt((lyricBox.left+lyricBox.width/2)/innerWidth,(lyricBox.top+lyricBox.height/2)/innerHeight,0,0.3);
  check('cursor scroll reaches lyrics scroller',lyricScroll===true&&scroller().scrollTop>0,scroller().scrollTop);
+ __media.duration=NaN;
+ check('unready recording produces no lyric request',TvMusic.getLyricsRequest()===null);
+ check('unready recording clears old lyrics and identity',view().querySelectorAll('.blyrics--line').length===0&&!scroller().querySelector('.tv-plain-lyrics')&&document.querySelector('.tv-song-identity h1').textContent==='Nothing playing');
+ __media.duration=180;const recovered=TvMusic.getLyricsRequest();
+ check('recording metadata recovers with a fresh request',recovered&&recovered.title==='New song'&&Number(recovered.retryNonce)===0,recovered);
+ check('recovered recording accepts fresh synchronized lyrics',TvMusic.receiveLyrics(payload(recovered,{status:'synced',syncedLyrics:'[00:00]Recovered recording\n[00:05]Fresh words'}))===true&&view().querySelectorAll('.blyrics--line').length===2);
  TvMusic.back();
+ check('search reports absence of site navigation API',TvMusic.searchFor('Fixture song')===false);
+ const searchBox=document.createElement('ytmusic-search-box'),searchInput=document.createElement('input');searchBox.appendChild(searchInput);document.body.appendChild(searchBox);
+ check('search reports unsupported site search method',TvMusic.searchFor('Fixture song')===false);
+ let searched='',inputEvents=0;searchInput.addEventListener('input',()=>inputEvents++);searchBox.navigateToQueryResults=function(){searched=this.querySelector('input').value;};
+ const searchPlayer=video,searchTime=__media.time,searchUrl=location.href;
+ check('SPA search uses the site query navigation API',TvMusic.searchFor('  aespa Lemonade  ')===true&&searched==='aespa Lemonade'&&inputEvents===1,{searched,inputEvents});
+ check('SPA search preserves media node and playback position',document.querySelector('video')===searchPlayer&&__media.time===searchTime&&location.href===searchUrl,{time:__media.time,url:location.href});
+ check('empty SPA search does not navigate',TvMusic.searchFor('   ')===false&&searched==='aespa Lemonade');searchBox.remove();
+ const app=document.createElement('ytmusic-app');let homeRoute='';app.navigate=route=>homeRoute=route;document.body.appendChild(app);
+ check('Home uses the site single-page route',TvMusic.home()===true&&homeRoute==='FEmusic_home',homeRoute);
+ check('SPA Home preserves media node and playback position',document.querySelector('video')===searchPlayer&&__media.time===searchTime&&location.href===searchUrl);app.remove();
  }catch(error){results.push({name:'uncaught integration error',pass:false,detail:error.stack})}
  document.body.innerHTML='<pre>'+JSON.stringify(results,null,2)+'</pre>';
  await fetch('/results/integration',{method:'POST',body:JSON.stringify(results)});
@@ -157,6 +238,7 @@ preview_tests=r'''
  const results=[];
  const check=(name,pass,detail)=>results.push({name,pass:!!pass,detail});
  try {
+  const hostReset=document.createElement('style');hostReset.textContent='* { box-sizing: content-box; }';document.head.appendChild(hostReset);
   check('preview starts in Browse',window.TvMusic&&!TvMusic.isLyricsVisible());
   document.querySelector('video').dispatchEvent(new Event('loadedmetadata'));
   document.querySelector('#lyrics').click();
@@ -172,6 +254,7 @@ preview_tests=r'''
   document.querySelector('video').dispatchEvent(new Event('timeupdate'));
   const transport=document.querySelector('#tv-transport');
   check('video events show transport footer',transport&&!transport.hidden);
+  check('transport has explicit border-box independent of page reset',getComputedStyle(transport).boxSizing==='border-box'&&Math.abs(transport.getBoundingClientRect().height-78)<0.1,{sizing:getComputedStyle(transport).boxSizing,height:transport.getBoundingClientRect().height});
   const fits=element=>{
    const r=element.getBoundingClientRect();
    return r.width>0&&r.height>0&&r.left>=0&&r.top>=0&&r.right<=innerWidth+1&&r.bottom<=innerHeight+1;
@@ -183,6 +266,17 @@ preview_tests=r'''
   const overlayFooter=document.querySelector('#tv-lyrics-overlay footer');
   check('lyrics hint fits above transport',fits(overlayFooter)&&overlayFooter.getBoundingClientRect().bottom<=transport.getBoundingClientRect().top);
   check('lyrics scrolling region has visible height',document.querySelector('.tv-lyrics-scroll').clientHeight>40);
+  const identity=document.querySelector('.tv-song-identity'),scroll=document.querySelector('.tv-lyrics-scroll'),cover=document.querySelector('.tv-cover-art');
+  const identityBox=identity.getBoundingClientRect(),scrollBox=scroll.getBoundingClientRect();
+  check('song identity and lyrics share a split layout',identityBox.right<=scrollBox.left+2&&Math.abs(identityBox.top-scrollBox.top)<40,{identity:identityBox.toJSON(),lyrics:scrollBox.toJSON()});
+  check('cover artwork fits viewport',fits(cover),cover.getBoundingClientRect().toJSON());
+  check('split title and artist retain separate hierarchy',identity.querySelector('h1').textContent==='Open skies'&&identity.querySelector('.tv-song-artist').textContent==='TV Music Demo');
+  check('lyrics pane stays above transport',scrollBox.bottom<=transport.getBoundingClientRect().top&&scrollBox.height>=100,scrollBox.toJSON());
+  const overlay=document.querySelector('#tv-lyrics-overlay'),restingTop=identity.getBoundingClientRect().top;
+  check('expanded chrome API returns state',TvMusic.setChromeExpanded(true)===true&&document.documentElement.classList.contains('tv-chrome-expanded'));
+  const expandedTop=identity.getBoundingClientRect().top;
+  check('expanded native chrome reserves header space',expandedTop>restingTop,{restingTop,expandedTop});
+  check('collapsed chrome restores available room',TvMusic.setChromeExpanded(false)===false&&Math.abs(identity.getBoundingClientRect().top-restingTop)<1);
   if(location.search.includes('narrow'))check('TV viewport is exactly 916 by 454 CSS pixels',innerWidth===916&&innerHeight===454,[innerWidth,innerHeight]);
   check('preview reports no browser errors',!window.__previewErrors.length,window.__previewErrors);
  }catch(error){results.push({name:'uncaught preview error',pass:false,detail:error.stack})}
@@ -238,16 +332,18 @@ finally:
  try: p.wait(timeout=5)
  except subprocess.TimeoutExpired:p.kill();p.wait()
 
-if args.preview_screenshot and done.is_set():
- args.preview_screenshot.parent.mkdir(parents=True,exist_ok=True)
- screenshot_profile=Path(temporary.name)/'screenshot-profile';screenshot_profile.mkdir()
- try:
-  subprocess.run([args.firefox,'--headless','--profile',str(screenshot_profile),
-    '--screenshot',str(args.preview_screenshot.resolve()),'--window-size','1280,720',url+'/__preview?capture'],
-    check=True,timeout=25,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-  print('Preview screenshot: '+str(args.preview_screenshot.resolve()))
- except (subprocess.CalledProcessError,subprocess.TimeoutExpired) as error:
-  print('Screenshot failed: '+str(error));exit_code=1
+for screenshot,size,query in [(args.preview_screenshot,'1280,720','capture'),
+    (args.narrow_screenshot,'916,454','narrow&capture')]:
+ if screenshot and done.is_set():
+  screenshot.parent.mkdir(parents=True,exist_ok=True)
+  screenshot_profile=Path(temporary.name)/('screenshot-'+size);screenshot_profile.mkdir()
+  try:
+   subprocess.run([args.firefox,'--headless','--profile',str(screenshot_profile),
+     '--screenshot',str(screenshot.resolve()),'--window-size',size,url+'/__preview?'+query],
+     check=True,timeout=25,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+   print('Preview screenshot: '+str(screenshot.resolve()))
+  except (subprocess.CalledProcessError,subprocess.TimeoutExpired) as error:
+   print('Screenshot failed: '+str(error));exit_code=1
 
 server.shutdown()
 temporary.cleanup()

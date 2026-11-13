@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="320dp" android:height="180dp" android:viewportWidth="320" android:viewportHeight="180">
-    <path android:fillColor="#101310" android:pathData="M0,0h320v180h-320z" />
-    <path android:fillColor="#B7F36B" android:pathData="M137,36L204,22V110C204,129 172,139 161,123C150,104 177,88 190,94V52L151,60V126C151,145 119,155 108,139C97,120 124,104 137,110Z" />
-    <path android:fillColor="#B7F36B" android:pathData="M30,155h260v3h-260z" />
+    <path android:fillColor="#101116" android:pathData="M0,0h320v180h-320z" />
+    <path android:fillColor="#CBB792" android:pathData="M137,36L204,22V110C204,129 172,139 161,123C150,104 177,88 190,94V52L151,60V126C151,145 119,155 108,139C97,120 124,104 137,110Z" />
+    <path android:fillColor="#CBB792" android:pathData="M30,155h260v3h-260z" />
     <!-- A small outlined title keeps the launcher banner self-contained and crisp. -->
-    <path android:fillColor="#00000000" android:strokeColor="#E6ECE1"
+    <path android:fillColor="#00000000" android:strokeColor="#F2EEE6"
         android:strokeWidth="1.6" android:strokeLineCap="round" android:strokeLineJoin="round"
         android:pathData="M88,173V162L93,168L98,162V173 M104,162V170Q104,173 108,173Q112,173 112,170V162 M126,162H121Q118,162 118,165Q118,167 122,167Q126,167 126,170Q126,173 123,173H118 M132,162H140M136,162V173M132,173H140 M154,162H149Q146,162 146,166V169Q146,173 149,173H154 M166,173V162H174M166,167H173 M180,165Q180,162 184,162Q188,162 188,165V170Q188,173 184,173Q180,173 180,170Z M194,173V162H198Q202,162 202,165Q202,168 198,168H194M198,168L203,173 M214,162H224M219,162V173 M229,162L234,173L239,162" />
 </vector>
