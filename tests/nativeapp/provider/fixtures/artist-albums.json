@@ -1,0 +1,64 @@
+{
+  "contents": [
+    {
+      "musicTwoRowItemRenderer": {
+        "title": {
+          "runs": [
+            {
+              "text": "EASY",
+              "navigationEndpoint": {
+                "browseEndpoint": {
+                  "browseId": "MPREb_1d55KGW6MTI",
+                  "params": "ggMrGilPTEFLNXV5X2x3Y2lHendYMTBLLUhmdjBCNGNEOS1XU3pPRGlVaW9hSQ%3D%3D",
+                  "browseEndpointContextSupportedConfigs": {
+                    "browseEndpointContextMusicConfig": {
+                      "pageType": "MUSIC_PAGE_TYPE_ALBUM"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "subtitle": {
+          "runs": [
+            {
+              "text": "2024"
+            }
+          ]
+        },
+        "thumbnailRenderer": {
+          "musicThumbnailRenderer": {
+            "thumbnail": {
+              "thumbnails": [
+                {
+                  "url": "https://yt3.googleusercontent.com/8IvBab8HMCPRrfomo1az0SlJQ1OaBtSoOK5ZtRCe524fjh5YGewjVateF-Lc67wXjAJw1zV52F6y_Dw=w226-h226-l90-rj",
+                  "width": 226,
+                  "height": 226
+                },
+                {
+                  "url": "https://yt3.googleusercontent.com/8IvBab8HMCPRrfomo1az0SlJQ1OaBtSoOK5ZtRCe524fjh5YGewjVateF-Lc67wXjAJw1zV52F6y_Dw=w544-h544-l90-rj",
+                  "width": 544,
+                  "height": 544
+                }
+              ]
+            },
+            "thumbnailCrop": "MUSIC_THUMBNAIL_CROP_UNSPECIFIED",
+            "thumbnailScale": "MUSIC_THUMBNAIL_SCALE_ASPECT_FILL"
+          }
+        },
+        "navigationEndpoint": {
+          "browseEndpoint": {
+            "browseId": "MPREb_1d55KGW6MTI",
+            "params": "ggMrGilPTEFLNXV5X2x3Y2lHendYMTBLLUhmdjBCNGNEOS1XU3pPRGlVaW9hSQ%3D%3D",
+            "browseEndpointContextSupportedConfigs": {
+              "browseEndpointContextMusicConfig": {
+                "pageType": "MUSIC_PAGE_TYPE_ALBUM"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

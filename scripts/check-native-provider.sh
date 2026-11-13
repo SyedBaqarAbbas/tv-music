@@ -27,6 +27,9 @@ trap cleanup EXIT
 javac -J-Xmx256m --release 17 -classpath "$framework" -d "$classes" \
     app/src/main/java/dev/ytmusictv/nativeapp/model/NativeTrack.java \
     app/src/main/java/dev/ytmusictv/nativeapp/model/NativeArtworkUrl.java \
+    app/src/main/java/dev/ytmusictv/nativeapp/model/NativeCollection.java \
+    app/src/main/java/dev/ytmusictv/nativeapp/model/NativeArtistPage.java \
+    app/src/main/java/dev/ytmusictv/nativeapp/model/NativeAlbumPage.java \
     app/src/main/java/dev/ytmusictv/nativeapp/provider/ProviderHttp.java \
     app/src/main/java/dev/ytmusictv/nativeapp/provider/NativeMusicProvider.java \
     tests/nativeapp/provider/NativeProviderParserTest.java \

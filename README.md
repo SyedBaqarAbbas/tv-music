@@ -1,10 +1,16 @@
 # TV Music
 
-An experimental Android TV music app for a five-way remote. Version `0.6.0-native-preview` adds native catalogue search, account-liked tracks, Media3 audio/video playback, queue editing, and native synchronized lyrics. Its normal music interface loads no YouTube Music webpage. The previously tested website player remains available during the migration. Initial hardware target: your TCL Android TV 11, firmware `V8-R51AT01-LF1V126.020732`.
+An experimental Android TV music app for a five-way remote. Version `0.7.3-native-preview` includes native artist/album browsing, voice search, whole-album queue actions, account-liked tracks, Media3 audio/video playback, queue editing, and native synchronized lyrics. Its normal music interface loads no YouTube Music webpage. The previously tested website player remains available during the migration. Initial hardware target: your TCL Android TV 11, firmware `V8-R51AT01-LF1V126.020732`.
 
 ## Native preview
 
 The native preview uses Java Android Views, recycled lists, one Media3 player/session, and a native lyrics panel. D-pad moves focus; OK activates. Search results have an Actions control for Play next and Add to queue. Queue actions support Move with Up/Down and OK, removal/Undo, shuffle, repeat, and saved-queue restoration. The current item stays separate from upcoming entries. Back/Forward navigate screen history; channel and media Next/Previous invoke track changes when the TV delivers those keys. Playback continues while browsing inside the app; leaving the app pauses by default, with an optional background-audio setting.
+
+To queue a whole album, open **Search → Artists**, find the artist, open an album, and choose **Add all to queue**. **Play next** puts the complete album immediately after the current track; **Play all** replaces the queue and starts the album. Album track order and duplicate occurrences are preserved. The selected catalogue edition determines the tracklist: the current EASY release includes additional sped-up and slowed/reverb versions. Albums can also be found directly through Search → Albums. Back restores the artist/album, query, filter and scroll position.
+
+For voice input, open Search and select **Voice** with D-pad/OK. Allow microphone access when Android asks. The in-app Listening dialog uses the TV's recognition service and searches in the current Songs/Artists/Albums filter. Cancel keeps the previous query. Recording stops when the dialog closes or the app loses visibility, with no audio stored by this app. This native path has been confirmed working with the TCL remote; the earlier external Google speech window opened without hearing it. The dedicated Assistant key remains system-controlled. See [Android speech recognition](https://developer.android.com/reference/android/speech/SpeechRecognizer).
+
+Large cover art uses available 640-pixel renditions rather than enlarged 120-pixel search thumbnails. The loader has one worker, a 4 MiB bitmap cache and a 2 MiB encoded-response cap. It crops before sampling, preserves 512-pixel sources instead of reducing them to 256, and falls back to the supplied thumbnail if a larger rendition is unavailable. Temporary decode buffers add to the cache budget; it is not a total image-memory limit. Album songs without row artwork now inherit the selected album cover. Empty artwork clears the previous image, and a bounded metadata-only repair can fill missing covers in an existing queue while preserving its IDs, order, source and playback position. The repair was verified on the TCL: all six existing IVE EMPATHY entries gained their covers while queue IDs/order and the current entry stayed intact; playback advanced without resetting.
 
 The Audio/Video control requests representations of the **same video ID**, preserving the queue. Video is limited initially to sources up to 720p/30 fps, preferring MP4/H.264. Separate audio and video representations are merged by Media3. An album recording and a differently edited music video are not silently substituted for one another. Unavailable video can fall back to audio.
 
@@ -23,6 +29,8 @@ The TV launcher now opens the native preview. It can also be opened explicitly:
 ```
 
 The original activity remains available explicitly as `dev.ytmusictv/.MainActivity` for rollback.
+
+The physical TCL shortcuts are confirmed: the virtual-keyboard button opens Search and its keyboard; Info/subtitles opens Lyrics. Web opens the TV's browser and is left as-is at the user's request. These shortcuts do not change remote behavior in other apps.
 
 ## Previously tested website player
 
@@ -96,13 +104,14 @@ node --check app/src/main/assets/tv.js
 ./scripts/check-sign-in.sh
 ./scripts/check-native-provider.sh
 ./scripts/check-native-queue.sh
+./scripts/check-artwork.sh
 ./scripts/build.sh assembleDebug lintDebug
 python3 scripts/check-browser.py
 ```
 
 Parser checks cover repeated timestamps, offsets, instrumental gaps, malformed tags, missing duration, and a maximum of 1,000 rendered lines. The lightweight Java check compiles the retained legacy sources against an Apache-licensed Android 11 framework jar with a 512 MB compiler heap. Gradle compiles and lints the complete native integration. The browser check tests the legacy renderer and offline preview using an installed Firefox; it does not validate native views or Android WebView behavior. The renderer has a pinned provenance manifest and a standalone rebuild under `app/src/main/assets/lyrics/rebuild.mjs`. See [third-party notices](THIRD_PARTY_NOTICES.md).
 
-The native-provider check uses sanitized public search/playlist-style JSON fixtures, runs offline after the shared framework jar is prepared, and limits the compiler to 256 MB and test JVM to 128 MB. It covers real row metadata, duration and video identity, malformed/private rows, duplicates, nested containers, and the 60-result/depth bounds. Its library-shaped fixture uses public album metadata; it does not certify account authentication or capture private library contents.
+The native-provider check uses sanitized public search, artist, album and playlist-style JSON fixtures, runs offline after the shared framework jar is prepared, and limits the compiler to 256 MB and test JVM to 128 MB. Its 122 catalogue checks cover row metadata, duration and video identity, malformed/private rows, duplicates, nested containers, selected album editions, recommendation exclusion, continuations and album-cover fallback. The 55 artwork URL checks and 91 queue/checkpoint checks also pass, for 268 native checks total. Version code 11 (`0.7.3-native-preview`) passed `assembleDebug` and `lintDebug` and was installed on the TCL. Search is bounded at 60 results and albums at 200 tracks with three continuation requests. The library-shaped fixture uses public album metadata; it does not certify account authentication or capture private library contents.
 
 Hardware checks on this TCL use Android TV 11 and Android System WebView 157. The visible cursor and complete playback strip have been observed on-device; aespa's LEMONADE lyrics were fetched and rendered. YouTube's ES5 custom-element adapter requires constructing Braccato's registered class directly, rather than using `document.createElement` for that tag.
 

@@ -32,7 +32,15 @@ public final class NativeArtworkUrlTest {
         unchanged("https://lh3.googleusercontent.com/id=wBAD-h120-c");
         unchanged("https://lh3.googleusercontent.com/id=w120-h120--c");
         unchanged("https://lh3.googleusercontent.com/id-without-size");
-        unchanged("https://i.ytimg.com/vi/Video_Id/hqdefault.jpg"); // No unverified maxres guess.
+        String youtube="https://i.ytimg.com/vi/tDrVeuvFETk/hqdefault.jpg?sqp=public_size&rs=public_signature";
+        equal("https://i.ytimg.com/vi/tDrVeuvFETk/maxresdefault.jpg",NativeArtworkUrl.candidates(youtube,640).get(0));
+        equal(youtube,NativeArtworkUrl.candidates(youtube,640).get(1));
+        equal("https://i.ytimg.com/vi/tDrVeuvFETk/maxresdefault.jpg",NativeArtworkUrl.candidates("https://i.ytimg.com/vi/tDrVeuvFETk/mqdefault.webp",640).get(0));
+        unchanged("https://i.ytimg.com/vi/Video_Id/hqdefault.jpg");
+        unchanged("https://i.ytimg.com.attacker.example/vi/tDrVeuvFETk/hqdefault.jpg");
+        unchanged("https://i.ytimg.com/vi/tDrVeuvFETk/not-a-thumbnail.jpg");
+        unchanged("https://i.ytimg.com/vi/tDrVeuvFETk/hqdefault.jpg?other=preserve");
+        unchanged("https://i.ytimg.com/vi/tDrVeuvFETk/hqdefault.jpg?sqp=");
         unchanged("not a valid URL");
         try { urls.add("bad");throw new AssertionError("Candidates must be immutable"); }
         catch(UnsupportedOperationException expected){checks++;}

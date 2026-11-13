@@ -25,6 +25,31 @@ public final class QueueOrder {
         return copy;
     }
 
+    public static List<String> insertNextCollection(List<String> order, String current, List<String> entries) {
+        ArrayList<String> copy = checked(order);
+        ArrayList<String> batch = checkedCollection(copy, entries);
+        int at = copy.indexOf(current);
+        if (!copy.isEmpty() && at < 0) throw new IllegalArgumentException("The current entry changed; retry collection");
+        copy.addAll(at < 0 ? 0 : at + 1, batch);
+        return copy;
+    }
+
+    public static List<String> appendCollection(List<String> order, List<String> entries) {
+        ArrayList<String> copy = checked(order);
+        copy.addAll(checkedCollection(copy, entries));
+        return copy;
+    }
+
+    private static ArrayList<String> checkedCollection(List<String> order, List<String> entries) {
+        ArrayList<String> batch = checked(entries);
+        if (batch.isEmpty()) throw new IllegalArgumentException("The collection is empty");
+        HashSet<String> existing = new HashSet<>(order);
+        for (String id : batch) {
+            if (id == null || id.isEmpty() || existing.contains(id)) throw new IllegalArgumentException("Duplicate queue entry ID");
+        }
+        return batch;
+    }
+
     public static List<String> moveUpcoming(List<String> order, String current, String entry, String before) {
         ArrayList<String> copy = checked(order);
         int currentIndex = copy.indexOf(current), from = copy.indexOf(entry);

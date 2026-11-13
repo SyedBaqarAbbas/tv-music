@@ -171,6 +171,14 @@ public final class NativePlaybackEngine implements AutoCloseable {
             case NativePlaybackCommands.PLAY_NOW:
             case NativePlaybackCommands.PLAY_NEXT:
             case NativePlaybackCommands.ADD_END: add(action, NativeTrack.fromBundle(args.getBundle("track"))); break;
+            case NativePlaybackCommands.PLAY_COLLECTION:
+            case NativePlaybackCommands.PLAY_NEXT_COLLECTION:
+            case NativePlaybackCommands.ADD_COLLECTION: addCollection(action, args); break;
+            case NativePlaybackCommands.REFRESH_ARTWORK:
+                // Keep every Media3 item/source and its playback position intact.
+                // The snapshot/checkpoint read this metadata map independently.
+                if (ArtworkRepair.fillMissing(tracks, CollectionBatch.read(args, 0, true)) == 0) return snapshot();
+                break;
             case NativePlaybackCommands.MOVE: move(args.getString("entryId", ""), args.getString("beforeEntryId", "")); break;
             case NativePlaybackCommands.REMOVE: remove(args.getString("entryId", "")); break;
             case NativePlaybackCommands.CLEAR_UPCOMING: clearUpcoming(); break;
@@ -216,6 +224,37 @@ public final class NativePlaybackEngine implements AutoCloseable {
         error = "";
         if (action.equals(NativePlaybackCommands.PLAY_NOW)) {
             player.seekTo(indexOf(id), 0); player.prepare(); player.play();
+        }
+    }
+
+    private void addCollection(String action, Bundle args) {
+        boolean replacing = NativePlaybackCommands.PLAY_COLLECTION.equals(action);
+        boolean append = NativePlaybackCommands.ADD_COLLECTION.equals(action);
+        List<NativeTrack> batch = CollectionBatch.read(args, player.getMediaItemCount(), replacing);
+        ArrayList<String> ids = new ArrayList<>(batch.size());
+        ArrayList<MediaItem> items = new ArrayList<>(batch.size());
+        Map<String, NativeTrack> staged = new HashMap<>();
+        for (NativeTrack track : batch) {
+            String id;
+            do { id = UUID.randomUUID().toString(); } while (tracks.containsKey(id) || staged.containsKey(id));
+            ids.add(id); items.add(item(id, track)); staged.put(id, track);
+        }
+        List<String> desired = replacing ? ids : append ? QueueOrder.appendCollection(order(), ids)
+                : QueueOrder.insertNextCollection(order(), currentId(), ids);
+        // Every track, capacity and order decision above has passed before any
+        // live queue change. Media3 receives one playlist mutation for the batch.
+        if (replacing) {
+            tracks.clear(); tracks.putAll(staged);
+            player.setMediaItems(items, 0, 0);
+            applyTraversal(desired);
+            undoEntries = null; error = ""; retryEntry = ""; retryAt = 0;
+            player.prepare(); player.play();
+        } else {
+            int at = append || player.getMediaItemCount() == 0 ? player.getMediaItemCount()
+                    : player.getCurrentMediaItemIndex() + 1;
+            tracks.putAll(staged);
+            player.addMediaItems(at, items);
+            applyTraversal(desired);
         }
     }
 

@@ -5,6 +5,8 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /** Conservative Google image sizing. Identity/crop flags stay intact; original is always a fallback. */
 public final class NativeArtworkUrl {
@@ -19,7 +21,15 @@ public final class NativeArtworkUrl {
             URI uri = new URI(originalUrl);
             if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null
                     || uri.getUserInfo() != null || (uri.getPort() != -1 && uri.getPort() != 443)
-                    || uri.getRawQuery() != null || uri.getRawFragment() != null || !knownHost(uri.getHost())) return unchanged;
+                    || uri.getRawFragment() != null) return unchanged;
+            if (uri.getHost().equalsIgnoreCase("i.ytimg.com")) {
+                Matcher video = Pattern.compile("/vi/([A-Za-z0-9_-]{11})/(?:hqdefault|mqdefault|sddefault|default)\\.(?:jpg|webp)")
+                        .matcher(uri.getRawPath() == null ? "" : uri.getRawPath());
+                if (!video.matches() || !knownYoutubeQuery(uri.getRawQuery())) return unchanged;
+                String promoted = "https://i.ytimg.com/vi/" + video.group(1) + "/maxresdefault.jpg";
+                return Collections.unmodifiableList(Arrays.asList(promoted, originalUrl));
+            }
+            if (uri.getRawQuery() != null || !knownHost(uri.getHost())) return unchanged;
             String path = uri.getRawPath();
             int equals = path == null ? -1 : path.lastIndexOf('=');
             if (equals < 1) return unchanged;
@@ -60,6 +70,21 @@ public final class NativeArtworkUrl {
         } catch (Exception invalid) {
             return unchanged;
         }
+    }
+
+    private static boolean knownYoutubeQuery(String query) {
+        if (query == null) return true;
+        if (query.isEmpty()) return false;
+        boolean sqp=false, rs=false;
+        for (String pair : query.split("&", -1)) {
+            int equals=pair.indexOf('=');
+            if (equals < 1 || equals == pair.length()-1) return false;
+            String key=pair.substring(0,equals);
+            if (key.equals("sqp") && !sqp) sqp=true;
+            else if (key.equals("rs") && !rs) rs=true;
+            else return false;
+        }
+        return true;
     }
 
     private static boolean knownHost(String host) {

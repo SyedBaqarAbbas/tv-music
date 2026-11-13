@@ -1,6 +1,7 @@
 package dev.ytmusictv.nativeapp.provider;
 
 import dev.ytmusictv.nativeapp.model.NativeTrack;
+import dev.ytmusictv.nativeapp.model.NativeCollection;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -31,6 +32,82 @@ public final class NativeProviderParserTest {
         equal(174, liked.get(0).durationSeconds);
         check(liked.get(0).isVideoSource, "OMV retains video identity");
 
+        JSONObject album = new JSONObject(Files.readString(fixtureDir.resolve("album-easy.json")));
+        JSONObject artistAlbums = new JSONObject(Files.readString(fixtureDir.resolve("artist-albums.json")));
+        List<NativeCollection> releases = NativeMusicProvider.parseCollections(artistAlbums, NativeCollection.Kind.ALBUM);
+        equal(1, releases.size());
+        equal("EASY", releases.get(0).title);
+        equal("MPREb_1d55KGW6MTI", releases.get(0).id);
+        check(!releases.get(0).browseParams.isEmpty(), "album card keeps its selected edition params");
+        equal(0, NativeMusicProvider.parseCollections(artistAlbums, NativeCollection.Kind.ARTIST).size());
+        List<NativeTrack> albumTracks = NativeMusicProvider.parseAlbumTracks(album, 200);
+        equal(7, albumTracks.size()); // Current selected server edition includes two EASY versions.
+        String[] albumOrder = {"Good Bones", "EASY", "Swan Song", "Smart", "We got so much",
+                "EASY (Sped Up ver.)", "EASY (Slowed + Reverb ver.)"};
+        for (int i = 0; i < albumOrder.length; i++) {
+            equal(albumOrder[i], albumTracks.get(i).title);
+            equal("LE SSERAFIM", albumTracks.get(i).artist);
+            check(albumTracks.get(i).durationSeconds > 0, "album duration retained");
+        }
+        equal(2, NativeMusicProvider.parseAlbumTracks(album, 2).size());
+        JSONObject drama = new JSONObject(Files.readString(fixtureDir.resolve("album-drama.json")));
+        JSONObject dramaHeader = drama.getJSONObject("contents").getJSONObject("twoColumnBrowseResultsRenderer")
+                .getJSONArray("tabs").getJSONObject(0).getJSONObject("tabRenderer").getJSONObject("content")
+                .getJSONObject("sectionListRenderer").getJSONArray("contents").getJSONObject(0).getJSONObject("musicResponsiveHeaderRenderer");
+        String dramaCover = dramaHeader.getJSONObject("thumbnail").getJSONObject("musicThumbnailRenderer")
+                .getJSONObject("thumbnail").getJSONArray("thumbnails").getJSONObject(3).getString("url");
+        List<NativeTrack> dramaTracks = NativeMusicProvider.parseAlbumTracks(drama, 200);
+        equal(6, dramaTracks.size());
+        for (NativeTrack track : dramaTracks) {
+            equal(dramaCover, track.thumbnailUrl);
+            equal("aespa", track.artist);
+            equal("Drama - The 4th Mini Album", track.album);
+        }
+        JSONObject dramaWithRowArt = copy(drama);
+        JSONObject firstDramaRow = dramaWithRowArt.getJSONObject("contents").getJSONObject("twoColumnBrowseResultsRenderer")
+                .getJSONObject("secondaryContents").getJSONObject("sectionListRenderer").getJSONArray("contents")
+                .getJSONObject(0).getJSONObject("musicShelfRenderer").getJSONArray("contents")
+                .getJSONObject(0).getJSONObject("musicResponsiveListItemRenderer");
+        firstDramaRow.put("thumbnail", new JSONObject().put("musicThumbnailRenderer", new JSONObject().put("thumbnail",
+                new JSONObject().put("thumbnails", new JSONArray().put(image("https://example.com/explicit-track-cover",640))))));
+        List<NativeTrack> explicitArt = NativeMusicProvider.parseAlbumTracks(dramaWithRowArt, 200);
+        equal("https://example.com/explicit-track-cover", explicitArt.get(0).thumbnailUrl);
+        equal(dramaCover, explicitArt.get(1).thumbnailUrl);
+        equal(dramaTracks.get(0).videoId, explicitArt.get(0).videoId);
+        equal(dramaTracks.get(0).isVideoSource, explicitArt.get(0).isVideoSource);
+        dramaHeader.remove("thumbnail");
+        dramaHeader.put("straplineThumbnail", new JSONObject().put("thumbnails",
+                new JSONArray().put(image("https://example.com/artist-avatar",640))));
+        for (NativeTrack track : NativeMusicProvider.parseAlbumTracks(drama,200,"https://example.com/selected-album-cover"))
+            equal("https://example.com/selected-album-cover",track.thumbnailUrl);
+        for (NativeTrack track : NativeMusicProvider.parseAlbumTracks(drama,200)) equal("",track.thumbnailUrl);
+        for (NativeTrack track : NativeMusicProvider.parseAlbumTracks(drama,200,"http://example.com/insecure-cover")) equal("",track.thumbnailUrl);
+
+        JSONObject withRecommendations = copy(album);
+        JSONObject columns = withRecommendations.getJSONObject("contents").getJSONObject("twoColumnBrowseResultsRenderer");
+        JSONObject unrelated = new JSONObject().put("contents", new JSONArray().put(wrap(firstRow(search))))
+                .put("title", new JSONObject().put("simpleText", "You might also like"));
+        columns.put("tabs", new JSONArray().put(new JSONObject().put("tabRenderer", new JSONObject().put("selected", true)
+                .put("content", new JSONObject().put("sectionListRenderer", new JSONObject().put("contents", new JSONArray()
+                        .put(new JSONObject().put("musicPlaylistShelfRenderer", unrelated))))))));
+        columns.getJSONObject("secondaryContents").getJSONObject("sectionListRenderer").getJSONArray("contents")
+                .put(new JSONObject().put("musicShelfRenderer", unrelated));
+        equal(7, NativeMusicProvider.parseAlbumTracks(withRecommendations, 200).size());
+        equal("Good Bones", NativeMusicProvider.parseAlbumTracks(withRecommendations, 200).get(0).title);
+        JSONObject onlyRelated = new JSONObject().put("contents", new JSONObject().put("sectionListRenderer",
+                new JSONObject().put("contents", new JSONArray().put(new JSONObject().put("musicShelfRenderer", unrelated)))));
+        equal(0, NativeMusicProvider.parseAlbumTracks(onlyRelated, 200).size());
+        JSONArray repeatedAlbumRows = new JSONArray().put(wrap(firstRow(search))).put(wrap(firstRow(search)));
+        for (String type : new String[]{"musicPlaylistShelfContinuation", "musicShelfContinuation"}) {
+            JSONObject continuation = new JSONObject().put("continuationContents", new JSONObject().put(type,
+                    new JSONObject().put("contents", repeatedAlbumRows)));
+            equal(2, NativeMusicProvider.parseAlbumTracks(continuation, 200).size());
+        }
+        JSONObject appended = new JSONObject().put("onResponseReceivedActions", new JSONArray().put(new JSONObject()
+                .put("appendContinuationItemsAction", new JSONObject().put("continuationItems", repeatedAlbumRows))));
+        equal(2, NativeMusicProvider.parseAlbumTracks(appended, 200).size());
+        equal(1, NativeMusicProvider.parseTracks(appended).size()); // Search dedup and album order have different requirements.
+
         JSONObject row = firstRow(search);
         JSONObject artwork = copy(row);
         JSONArray renditions = new JSONArray().put(image("https://example.com/sixty",60))
@@ -50,11 +127,11 @@ public final class NativeProviderParserTest {
         equal(3723, parse(copy).get(0).durationSeconds);
 
         JSONObject artists = copy(row);
-        JSONArray columns = artists.getJSONArray("flexColumns");
+        JSONArray artistColumns = artists.getJSONArray("flexColumns");
         JSONArray runs = new JSONArray().put(linked("Artist A", "MUSIC_PAGE_TYPE_ARTIST"))
                 .put(new JSONObject().put("text", " & ")).put(linked("Artist B", "MUSIC_PAGE_TYPE_ARTIST"))
                 .put(new JSONObject().put("text", " • ")).put(linked("Album name", "MUSIC_PAGE_TYPE_ALBUM"));
-        columns.put(1, new JSONObject().put("musicResponsiveListItemFlexColumnRenderer", new JSONObject().put("text", new JSONObject().put("runs", runs))));
+        artistColumns.put(1, new JSONObject().put("musicResponsiveListItemFlexColumnRenderer", new JSONObject().put("text", new JSONObject().put("runs", runs))));
         equal("Artist A, Artist B", parse(artists).get(0).artist);
         equal("Album name", parse(artists).get(0).album);
 

@@ -7,6 +7,8 @@ import dev.ytmusictv.nativeapp.model.NativeTrack;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.LinkedHashMap;
 import java.util.Random;
 
 /** Actual queue decisions and checkpoint JSON with tiny in-memory platform fixtures. */
@@ -47,8 +49,91 @@ public final class NativeQueueTest {
         rejects(() -> QueueOrder.clearUpcoming(original, "missing"));
         equal(List.of("history", "current"), QueueOrder.clearUpcoming(
                 List.of("history", "current", "shuffled-C", "shuffled-B"), "current"));
+        collections();
+        artwork();
         persistence();
         System.out.println("Native queue/checkpoint checks passed: " + checks);
+    }
+    private static void artwork() {
+        Map<String,NativeTrack> queued = new LinkedHashMap<>();
+        NativeTrack current = new NativeTrack("song", "Original title", "Artist", "Album", 183, "", true);
+        NativeTrack duplicate = new NativeTrack("song", "Another occurrence", "Artist", "Album", 99, "", false);
+        NativeTrack existing = new NativeTrack("song", "Existing art", "Artist", "Album", 20, "https://old.example/cover", false);
+        NativeTrack unrelated = new NativeTrack("other", "Other song", "Artist", "Album", 40, "", false);
+        queued.put("current-id", current); queued.put("duplicate-id", duplicate);
+        queued.put("covered-id", existing); queued.put("upcoming-id", unrelated);
+        List<String> before = new ArrayList<>(queued.keySet());
+        NativeTrack fresh = new NativeTrack("song", "Different provider title", "artist", "album", 900,
+                "https://images.example/cover", false);
+        check(ArtworkRepair.fillMissing(queued, List.of(fresh)) == 2);
+        equal(before, new ArrayList<>(queued.keySet())); // Stable entry IDs and order, including duplicate songs.
+        NativeTrack repaired = queued.get("current-id");
+        check(repaired.videoId.equals(current.videoId) && repaired.title.equals(current.title)
+                && repaired.artist.equals(current.artist) && repaired.album.equals(current.album)
+                && repaired.durationSeconds == current.durationSeconds && repaired.isVideoSource == current.isVideoSource);
+        check(repaired.thumbnailUrl.equals(fresh.thumbnailUrl) && current.thumbnailUrl.isEmpty());
+        check(queued.get("duplicate-id").title.equals(duplicate.title)
+                && queued.get("duplicate-id").durationSeconds == 99 && !queued.get("duplicate-id").isVideoSource);
+        check(queued.get("covered-id") == existing && queued.get("upcoming-id") == unrelated);
+        check(ArtworkRepair.fillMissing(queued, List.of(fresh)) == 0 && queued.get("current-id") == repaired);
+
+        Map<String,NativeTrack> conflicts = new LinkedHashMap<>(); conflicts.put("kept-id", current);
+        check(ArtworkRepair.fillMissing(conflicts, List.of(new NativeTrack("song", "", "Other artist", "Album", 0,
+                fresh.thumbnailUrl, false))) == 0 && conflicts.get("kept-id") == current);
+        check(ArtworkRepair.fillMissing(conflicts, List.of(new NativeTrack("song", "", "Artist", "Other album", 0,
+                fresh.thumbnailUrl, false))) == 0 && conflicts.get("kept-id") == current);
+        for(String invalid : List.of("http://images.example/cover", "https://user@images.example/cover", "https://images.example:81/cover")) {
+            check(ArtworkRepair.fillMissing(conflicts, List.of(new NativeTrack("song", "", "Artist", "Album", 0,
+                    invalid, false))) == 0 && conflicts.get("kept-id") == current);
+        }
+        check(ArtworkRepair.fillMissing(conflicts, List.of(
+                new NativeTrack("song", "", "Different artist", "Album", 0, fresh.thumbnailUrl, false), fresh)) == 1);
+        NativeTrack noAlbum = new NativeTrack("song", "Original", "Artist", "", 15, "", false);
+        conflicts.clear(); conflicts.put("kept-id", noAlbum);
+        check(ArtworkRepair.fillMissing(conflicts, List.of(fresh)) == 1 && conflicts.get("kept-id").album.isEmpty());
+        List<NativeTrack> malformed = new ArrayList<>(); malformed.add(fresh); malformed.add(null);
+        conflicts.clear(); conflicts.put("kept-id", current);
+        rejects(() -> ArtworkRepair.fillMissing(conflicts, malformed));
+        check(conflicts.get("kept-id") == current); // A malformed final row cannot partially repair metadata.
+    }
+    private static void collections() {
+        List<String> shuffled = List.of("history", "current", "existing-C", "existing-B");
+        List<String> album = List.of("album-1", "album-2", "album-3");
+        equal(List.of("history", "current", "album-1", "album-2", "album-3", "existing-C", "existing-B"),
+                QueueOrder.insertNextCollection(shuffled, "current", album));
+        equal(List.of("history", "current", "existing-C", "existing-B", "album-1", "album-2", "album-3"),
+                QueueOrder.appendCollection(shuffled, album));
+        equal(album, QueueOrder.insertNextCollection(List.of(), "", album));
+        equal(album, QueueOrder.appendCollection(List.of(), album));
+        equal(List.of("history", "current", "new-1", "new-2", "album-1", "album-2", "album-3", "existing-C", "existing-B"),
+                QueueOrder.insertNextCollection(QueueOrder.insertNextCollection(shuffled, "current", album),
+                        "current", List.of("new-1", "new-2")));
+        rejects(() -> QueueOrder.insertNextCollection(shuffled, "stale", album));
+        rejects(() -> QueueOrder.insertNextCollection(shuffled, "current", List.of("album-1", "album-1")));
+        rejects(() -> QueueOrder.appendCollection(shuffled, List.of("album-1", "existing-B")));
+        rejects(() -> QueueOrder.appendCollection(shuffled, List.of()));
+        equal(List.of("history", "current", "existing-C", "existing-B"), shuffled);
+
+        Bundle valid = collection(3);
+        List<NativeTrack> tracks = CollectionBatch.read(valid, 197, false);
+        check(tracks.size() == 3 && tracks.get(0).title.equals("Track 0") && tracks.get(2).title.equals("Track 2"));
+        check(tracks.get(0).videoId.equals(tracks.get(1).videoId)); // collection duplicates are not deduplicated
+        check(CollectionBatch.read(collection(200), 200, true).size() == 200); // replacement ignores old capacity
+        rejects(() -> CollectionBatch.read(valid, 198, false));
+        rejects(() -> CollectionBatch.read(collection(201), 0, true));
+        rejects(() -> CollectionBatch.read(collection(0), 0, false));
+        rejects(() -> CollectionBatch.read(new Bundle(), 0, false));
+        ArrayList<Bundle> rows = valid.getParcelableArrayList("tracks");
+        rows.set(2, new Bundle()); // a bad final row rejects the entire otherwise valid collection
+        rejects(() -> CollectionBatch.read(valid, 0, false));
+        check(valid.<Bundle>getParcelableArrayList("tracks").size() == 3);
+        equal(List.of("history", "current", "existing-C", "existing-B"), shuffled); // validation never mutated live input
+    }
+    private static Bundle collection(int size) {
+        Bundle args = new Bundle(); ArrayList<Bundle> tracks = new ArrayList<>();
+        for (int i = 0; i < size; i++) tracks.add(new NativeTrack(i < 2 ? "same-song" : "song-" + i,
+                "Track " + i, "Artist", "Album", 180, "", false).toBundle());
+        args.putParcelableArrayList("tracks", tracks); return args;
     }
     private static void persistence() {
         MemoryContext context = new MemoryContext(); QueueCheckpoint storage = new QueueCheckpoint(context);
