@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Compile-only integration check. This does not package an APK or need an SDK.
+# Lightweight legacy/API30 check. Native AndroidX integration uses the Gradle check below.
 set -euo pipefail
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_dir"
@@ -37,7 +37,8 @@ import tempfile
 import xml.etree.ElementTree as ET
 
 root = Path(sys.argv[1])
-sources = sorted((root / 'app/src/main/java').rglob('*.java'))
+sources = sorted(path for path in (root / 'app/src/main/java').rglob('*.java')
+                 if 'nativeapp' not in path.parts)
 if not sources:
     raise SystemExit('No app Java sources found.')
 
@@ -77,6 +78,7 @@ with tempfile.TemporaryDirectory(prefix='compile-', dir=root / '.tools/java-chec
                     '-classpath', sys.argv[2], '-d', str(directory / 'classes'),
                     str(generated), *map(str, sources)], check=True)
 
-print(f'Java integration check passed: {len(sources)} sources; {len(references)} resource references.')
-print('This compile-only API30 check does not validate APK packaging, lint, or TV behavior.')
+print(f'Legacy Java/API30 check passed: {len(sources)} sources; {len(references)} resource references.')
+print('Native Java integration: ./scripts/build.sh compileDebugJavaWithJavac')
+print('APK/lint validation: ./scripts/build.sh assembleDebug lintDebug')
 PY

@@ -1,0 +1,348 @@
+{
+  "contents": {
+    "sectionListRenderer": {
+      "contents": [
+        {
+          "musicShelfRenderer": {
+            "contents": [
+              {
+                "musicResponsiveListItemRenderer": {
+                  "flexColumns": [
+                    {
+                      "musicResponsiveListItemFlexColumnRenderer": {
+                        "text": {
+                          "runs": [
+                            {
+                              "text": "LEMONADE",
+                              "navigationEndpoint": {
+                                "watchEndpoint": {
+                                  "videoId": "LBhcqYqeu0U",
+                                  "watchEndpointMusicSupportedConfigs": {
+                                    "watchEndpointMusicConfig": {
+                                      "musicVideoType": "MUSIC_VIDEO_TYPE_ATV"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "musicResponsiveListItemFlexColumnRenderer": {
+                        "text": {
+                          "runs": [
+                            {
+                              "text": "Song"
+                            },
+                            {
+                              "text": " • "
+                            },
+                            {
+                              "text": "aespa"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "musicResponsiveListItemFlexColumnRenderer": {
+                        "text": {
+                          "runs": [
+                            {
+                              "text": "240M plays"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ],
+                  "playlistItemData": {
+                    "videoId": "LBhcqYqeu0U"
+                  },
+                  "thumbnail": {
+                    "musicThumbnailRenderer": {
+                      "thumbnail": {
+                        "thumbnails": [
+                          {
+                            "url": "https://yt3.googleusercontent.com/_RICA9AQMvaw-SLRBVDVF3rLx6pgeXvy2USuFyueQhhMGAVga26n2brDIIbjNkkYW3xv9LyUdav9rWnKvA=w60-h60-l90-rj",
+                            "width": 60,
+                            "height": 60
+                          },
+                          {
+                            "url": "https://yt3.googleusercontent.com/_RICA9AQMvaw-SLRBVDVF3rLx6pgeXvy2USuFyueQhhMGAVga26n2brDIIbjNkkYW3xv9LyUdav9rWnKvA=w120-h120-l90-rj",
+                            "width": 120,
+                            "height": 120
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "navigationEndpoint": {
+                    "watchEndpoint": {
+                      "videoId": "LBhcqYqeu0U",
+                      "watchEndpointMusicSupportedConfigs": {
+                        "watchEndpointMusicConfig": {
+                          "musicVideoType": "MUSIC_VIDEO_TYPE_ATV"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "musicResponsiveListItemRenderer": {
+                  "flexColumns": [
+                    {
+                      "musicResponsiveListItemFlexColumnRenderer": {
+                        "text": {
+                          "runs": [
+                            {
+                              "text": "LEMONADE",
+                              "navigationEndpoint": {
+                                "watchEndpoint": {
+                                  "videoId": "tX0X6OBcJpQ",
+                                  "watchEndpointMusicSupportedConfigs": {
+                                    "watchEndpointMusicConfig": {
+                                      "musicVideoType": "MUSIC_VIDEO_TYPE_ATV"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "musicResponsiveListItemFlexColumnRenderer": {
+                        "text": {
+                          "runs": [
+                            {
+                              "text": "Song"
+                            },
+                            {
+                              "text": " • "
+                            },
+                            {
+                              "text": "aespa"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "musicResponsiveListItemFlexColumnRenderer": {
+                        "text": {
+                          "runs": [
+                            {
+                              "text": "240M plays"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ],
+                  "playlistItemData": {
+                    "videoId": "tX0X6OBcJpQ"
+                  },
+                  "thumbnail": {
+                    "musicThumbnailRenderer": {
+                      "thumbnail": {
+                        "thumbnails": [
+                          {
+                            "url": "https://yt3.googleusercontent.com/3QzvCmZ15B0mY9cYI9z9-YtLTwdDUL7ukdtW9-MS-1U2-gt7BWPQows7z7amw3akF4zVfW1-JkBB3OA=w60-h60-l90-rj",
+                            "width": 60,
+                            "height": 60
+                          },
+                          {
+                            "url": "https://yt3.googleusercontent.com/3QzvCmZ15B0mY9cYI9z9-YtLTwdDUL7ukdtW9-MS-1U2-gt7BWPQows7z7amw3akF4zVfW1-JkBB3OA=w120-h120-l90-rj",
+                            "width": 120,
+                            "height": 120
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "navigationEndpoint": {
+                    "watchEndpoint": {
+                      "videoId": "tX0X6OBcJpQ",
+                      "watchEndpointMusicSupportedConfigs": {
+                        "watchEndpointMusicConfig": {
+                          "musicVideoType": "MUSIC_VIDEO_TYPE_ATV"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "musicResponsiveListItemRenderer": {
+                  "flexColumns": [
+                    {
+                      "musicResponsiveListItemFlexColumnRenderer": {
+                        "text": {
+                          "runs": [
+                            {
+                              "text": "aespa LEMONADE Easy Lyrics",
+                              "navigationEndpoint": {
+                                "watchEndpoint": {
+                                  "videoId": "tDrVeuvFETk",
+                                  "watchEndpointMusicSupportedConfigs": {
+                                    "watchEndpointMusicConfig": {
+                                      "musicVideoType": "MUSIC_VIDEO_TYPE_UGC"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "musicResponsiveListItemFlexColumnRenderer": {
+                        "text": {
+                          "runs": [
+                            {
+                              "text": "Video"
+                            },
+                            {
+                              "text": " • "
+                            },
+                            {
+                              "text": "Lemonade"
+                            },
+                            {
+                              "text": " • "
+                            },
+                            {
+                              "text": "1.7M views"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ],
+                  "playlistItemData": {
+                    "videoId": "tDrVeuvFETk"
+                  },
+                  "thumbnail": {
+                    "musicThumbnailRenderer": {
+                      "thumbnail": {
+                        "thumbnails": [
+                          {
+                            "url": "https://i.ytimg.com/vi/tDrVeuvFETk/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3kxQmJjBYPGdDzKx605_jWeOOHaXQ",
+                            "width": 400,
+                            "height": 225
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "navigationEndpoint": {
+                    "watchEndpoint": {
+                      "videoId": "tDrVeuvFETk",
+                      "watchEndpointMusicSupportedConfigs": {
+                        "watchEndpointMusicConfig": {
+                          "musicVideoType": "MUSIC_VIDEO_TYPE_UGC"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "musicResponsiveListItemRenderer": {
+                  "flexColumns": [
+                    {
+                      "musicResponsiveListItemFlexColumnRenderer": {
+                        "text": {
+                          "runs": [
+                            {
+                              "text": "Voice Memo (WINTER Version)",
+                              "navigationEndpoint": {
+                                "watchEndpoint": {
+                                  "videoId": "8v9roARcsNs",
+                                  "watchEndpointMusicSupportedConfigs": {
+                                    "watchEndpointMusicConfig": {
+                                      "musicVideoType": "MUSIC_VIDEO_TYPE_ATV"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "musicResponsiveListItemFlexColumnRenderer": {
+                        "text": {
+                          "runs": [
+                            {
+                              "text": "Song"
+                            },
+                            {
+                              "text": " • "
+                            },
+                            {
+                              "text": "aespa"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "musicResponsiveListItemFlexColumnRenderer": {
+                        "text": {
+                          "runs": [
+                            {
+                              "text": "118K plays"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ],
+                  "playlistItemData": {
+                    "videoId": "8v9roARcsNs"
+                  },
+                  "thumbnail": {
+                    "musicThumbnailRenderer": {
+                      "thumbnail": {
+                        "thumbnails": [
+                          {
+                            "url": "https://yt3.googleusercontent.com/3QzvCmZ15B0mY9cYI9z9-YtLTwdDUL7ukdtW9-MS-1U2-gt7BWPQows7z7amw3akF4zVfW1-JkBB3OA=w60-h60-l90-rj",
+                            "width": 60,
+                            "height": 60
+                          },
+                          {
+                            "url": "https://yt3.googleusercontent.com/3QzvCmZ15B0mY9cYI9z9-YtLTwdDUL7ukdtW9-MS-1U2-gt7BWPQows7z7amw3akF4zVfW1-JkBB3OA=w120-h120-l90-rj",
+                            "width": 120,
+                            "height": 120
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "navigationEndpoint": {
+                    "watchEndpoint": {
+                      "videoId": "8v9roARcsNs",
+                      "watchEndpointMusicSupportedConfigs": {
+                        "watchEndpointMusicConfig": {
+                          "musicVideoType": "MUSIC_VIDEO_TYPE_ATV"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

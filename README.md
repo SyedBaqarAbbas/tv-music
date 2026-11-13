@@ -1,12 +1,38 @@
 # TV Music
 
-An experimental standalone Android TV launcher for the YouTube Music website, with remote navigation and the actual Better Lyrics renderer, [Braccato](https://github.com/better-lyrics/braccato). Initial hardware target: your TCL Android TV 11, firmware `V8-R51AT01-LF1V126.020732`.
+An experimental Android TV music app for a five-way remote. Version `0.6.0-native-preview` adds native catalogue search, account-liked tracks, Media3 audio/video playback, queue editing, and native synchronized lyrics. Its normal music interface loads no YouTube Music webpage. The previously tested website player remains available during the migration. Initial hardware target: your TCL Android TV 11, firmware `V8-R51AT01-LF1V126.020732`.
+
+## Native preview
+
+The native preview uses Java Android Views, recycled lists, one Media3 player/session, and a native lyrics panel. D-pad moves focus; OK activates. Search results have an Actions control for Play next and Add to queue. Queue actions support Move with Up/Down and OK, removal/Undo, shuffle, repeat, and saved-queue restoration. The current item stays separate from upcoming entries. Back/Forward navigate screen history; channel and media Next/Previous invoke track changes when the TV delivers those keys. Playback continues while browsing inside the app; leaving the app pauses by default, with an optional background-audio setting.
+
+The Audio/Video control requests representations of the **same video ID**, preserving the queue. Video is limited initially to sources up to 720p/30 fps, preferring MP4/H.264. Separate audio and video representations are merged by Media3. An album recording and a differently edited music video are not silently substituted for one another. Unavailable video can fall back to audio.
+
+Catalogue requests use native HTTPS/JSON and YouTube Music's private interfaces. Search currently returns at most 60 playable song/video results from one response; it is not a complete paginated catalogue browser. **Library currently means the first page, up to 60 liked tracks**, not the complete account library, uploaded music, or every saved playlist. Account → Sign in opens the existing private account window; Refresh library then checks native account access separately. The catalogue adapter uses only the app's own Music-session cookies for requests to `music.youtube.com`; it does not import another app's browser profile or log session material.
+
+Actual playable sources come from **NewPipeExtractor `v0.27.1`**, not the official YouTube Data API. The resolver currently makes guest requests and does not attach the account session to media extraction. A signed-in catalogue therefore does not promise playback of private, age-restricted, uploaded, region-blocked, or subscription-only tracks. There is no new Google Cloud client setup, laptop relay, Python runtime, yt-dlp, or ffmpeg process on the TV. Private service interfaces and expiring sources can change or fail; Retry/Skip and an audio fallback remain available. See [implementation proposal](docs/native-tv-proposal.md) and [licenses/provenance](THIRD_PARTY_NOTICES.md).
+
+Native lyrics reuse the existing LRCLIB provider and recording/timing safeguards, presented with recycled native text views driven by the Media3 clock. The native panel preserves the listening-room design; it does not run Braccato's JavaScript/DOM renderer. The original Braccato renderer remains bundled for the legacy player and offline preview.
+
+Native audio/video playback, search, synchronized lyrics, Play next, Add to queue, Move, Remove/Undo, Clear/Undo, channel commands, shuffled restoration and Home/pause have been checked on the TCL. PixelCopy captured a real video frame from the native surface; the TV's ordinary screencap omits its video plane. A short Realtek hardware-decoder sample reported 709 rendered frames with zero decoder-dropped frames. These are initial checks, not sustained performance qualification. The saved account reports a signed-in bootstrap; its liked-track response currently contains zero tracks, so a populated account library remains unverified. See [hardware validation](docs/native-preview-validation.md).
+
+The TV launcher now opens the native preview. It can also be opened explicitly:
+
+```sh
+.tools/android-sdk/platform-tools/adb shell am start -n dev.ytmusictv/.nativeapp.ui.NativeTvActivity
+```
+
+The original activity remains available explicitly as `dev.ytmusictv/.MainActivity` for rollback.
+
+## Previously tested website player
 
 Version 0.5 adds an in-app Google account window using the player's normal WebView profile. Sign-in was completed on this TCL with the unchanged system user agent, then verified in the actual player alongside synchronized lyrics. The charcoal interface includes a collapsible command strip, artwork-and-lyrics listening room, native lyric glides, and compact playback controls. Cursor movement and paused work are kept small, and incomplete timed lyric fragments fall back to full text. This remains an experimental website-based player; extended performance and compatibility testing is still needed. There is no standalone YouTube Music playback API integrated here.
 
 ## Lightweight development
 
-The app uses Java, platform Android views, one playback WebView, and a temporary account WebView that is destroyed on return. No Compose, React, Electron, or bundled browser. Gradle runs one worker with a 1 GB heap and stops after the build. That is a JVM heap limit, not a limit on total system RAM. Android 8.0+ is the initial minimum; your TV runs Android 11. An updated Android System WebView is needed; the bundled JavaScript targets Chrome 80 syntax, which is not a guarantee that the current YouTube Music site supports that engine.
+The native preview uses Java, Android Views/RecyclerView, and Media3. Its account window is temporary; its playback does not run through WebView. The legacy mode uses one playback WebView and the temporary account window. No Compose, React, Electron, bundled browser, or emulator is required. Gradle runs one worker with a 1 GB heap and stops after the build. That is a JVM heap limit, not a limit on total system RAM. Android 8.0+ is the initial minimum; your TV runs Android 11. The legacy page and account flow need an updated Android System WebView; the bundled JavaScript targets Chrome 80 syntax, which is not a guarantee that the current YouTube Music site supports that engine.
+
+Native runtime versions are pinned to Media3 `1.5.1`, RecyclerView `1.3.2`, NewPipeExtractor `v0.27.1`, and `desugar_jdk_libs_nio:2.1.5` for Java library APIs on Android 11. NewPipeExtractor is obtained from a narrowly scoped JitPack repository. There is no Kotlin compiler or whole multiplatform application build in this project. One catalogue worker has one queued request; stale catalogue requests are cancelled. Catalogue JSON is capped at 2 MB, extraction responses at 8 MB to allow current player scripts, and media bytes are streamed by Media3 rather than loaded into memory as a complete track.
 
 Try the offline UI without Android tools:
 
@@ -29,17 +55,19 @@ The bootstrap supports Linux x86-64. On other systems, install JDK 17 and Androi
 
 The debug APK will be `app/build/outputs/apk/debug/app-debug.apk`. If licenses have not been reviewed, packaging remains unverified; the source checks do not substitute for an Android build.
 
-## Try it on your TCL
+## Install on your TCL
 
 After enabling developer options and network debugging on the TV, use the address and port displayed by its settings. If the TV requires wireless pairing, pair first; if it exposes legacy network ADB, connect directly. Keep the laptop and TV on the same network.
 
 ```sh
 .tools/android-sdk/platform-tools/adb connect TV_IP:PORT
 .tools/android-sdk/platform-tools/adb install -r app/build/outputs/apk/debug/app-debug.apk
-.tools/android-sdk/platform-tools/adb shell am start -n dev.ytmusictv/.MainActivity
+.tools/android-sdk/platform-tools/adb shell am start -n dev.ytmusictv/.nativeapp.ui.NativeTvActivity
 ```
 
-The app also appears in the TV launcher. The directional pad moves a visible cursor; hold an arrow to move faster, and press OK to click. Keep moving at an edge to scroll. Menu toggles the command strip; Hide or Down collapses it to the corner Controls button. Its preference is remembered. Search opens the TV keyboard and navigates within YouTube Music to preserve playback. Home in the command strip also preserves playback; the remote's system Home button pauses the app.
+The command above and the TV launcher open the native player. Arrows move focus, OK activates, and Back returns through screens. Menu shows or hides Controls. Search uses the TV keyboard. A result's Actions menu offers Play next and Add to queue. Queue → Actions → Move uses Up/Down and OK; Back cancels the draft. Channel +/− select next/previous entries when those key events reach the app. Left/Right on the seek rail changes position by ten seconds.
+
+The following account-window and cursor instructions describe the retained legacy player, opened explicitly with `.MainActivity`. Its directional pad moves a cursor; hold an arrow to move faster, and use OK to click. Its Music webpage is not loaded by the native player.
 
 Lyrics, or the lyrics icon in the playback strip, opens the listening room; Back returns to browsing. Previous, Play/Pause, Next, the seek rail, and elapsed/total times remain visible. Clicking a timed lyric seeks to that line; Follow song restores automatic scrolling after browsing lyrics manually. Missing or failed lyrics have a Try again action. Artwork has a local fallback and uses modest thumbnail sizes.
 
@@ -47,7 +75,7 @@ Account → Sign in here opens Google's HTTPS pages in an account window with th
 
 The account window uses the unmodified system user agent, no injected script or JavaScript bridge, and no credential reading or cookie export/import. Its navigation permits HTTPS Google/YouTube pages and the exact regional host `accounts.google.com.pk`, which this TV's sign-in flow uses. Query strings and fragments are omitted from address labels and diagnostic logs. The external browser option keeps its own separate session. More → Open YouTube launches the official TV app separately.
 
-## Lyrics and resource limits
+## Legacy lyrics and resource limits
 
 - Braccato 1.21.5 is bundled locally, approximately 104 KB JavaScript and 19 KB CSS before APK compression. Its MIT license and reproducible build are included; the GPL Chrome extension itself is not copied.
 - The TV theme disables letter wave, glow, wobble, full-line opacity fades, and per-line scroll animations. Supported WebViews use native smooth scrolling and a small gold marker; reduced-motion preferences and unsupported browsers use instant following. Seeks and explicit cursor scrolling stay immediate. Manual scrolling pauses following until Follow song or the renderer's 25-second timeout.
@@ -66,10 +94,15 @@ node --check app/src/main/assets/tv.js
 ./scripts/check-matcher.sh
 ./scripts/check-provider.sh
 ./scripts/check-sign-in.sh
+./scripts/check-native-provider.sh
+./scripts/check-native-queue.sh
+./scripts/build.sh assembleDebug lintDebug
 python3 scripts/check-browser.py
 ```
 
-Parser checks cover repeated timestamps, offsets, instrumental gaps, malformed tags, missing duration, and a maximum of 1,000 rendered lines. The Java check compiles the app against an Apache-licensed Android 11 framework jar, with a 512 MB compiler heap; this check does not package an APK or run Android lint. The browser check uses an installed Firefox and Python's standard library, with no browser download; it tests the real renderer, metadata, stale results, controls, timer cleanup, and the offline preview. Firefox passing does not certify Android WebView behavior. The renderer has a pinned provenance manifest and a standalone rebuild under `app/src/main/assets/lyrics/rebuild.mjs`. See [third-party notices](THIRD_PARTY_NOTICES.md).
+Parser checks cover repeated timestamps, offsets, instrumental gaps, malformed tags, missing duration, and a maximum of 1,000 rendered lines. The lightweight Java check compiles the retained legacy sources against an Apache-licensed Android 11 framework jar with a 512 MB compiler heap. Gradle compiles and lints the complete native integration. The browser check tests the legacy renderer and offline preview using an installed Firefox; it does not validate native views or Android WebView behavior. The renderer has a pinned provenance manifest and a standalone rebuild under `app/src/main/assets/lyrics/rebuild.mjs`. See [third-party notices](THIRD_PARTY_NOTICES.md).
+
+The native-provider check uses sanitized public search/playlist-style JSON fixtures, runs offline after the shared framework jar is prepared, and limits the compiler to 256 MB and test JVM to 128 MB. It covers real row metadata, duration and video identity, malformed/private rows, duplicates, nested containers, and the 60-result/depth bounds. Its library-shaped fixture uses public album metadata; it does not certify account authentication or capture private library contents.
 
 Hardware checks on this TCL use Android TV 11 and Android System WebView 157. The visible cursor and complete playback strip have been observed on-device; aespa's LEMONADE lyrics were fetched and rendered. YouTube's ES5 custom-element adapter requires constructing Braccato's registered class directly, rather than using `document.createElement` for that tag.
 
