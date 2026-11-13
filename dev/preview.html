@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TV Music · Offline preview</title>
+<link rel="stylesheet" href="../app/src/main/assets/lyrics/core.css">
+<link rel="stylesheet" href="../app/src/main/assets/tv.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #101b20; color: #f4f7f4; font: 20px system-ui,sans-serif; }
+  nav { display: flex; gap: 12px; align-items: center; padding: 18px 4vw; }
+  nav strong { flex: 1; color: #b9e5c8; }
+  button { background: #25383c; color: #f4f7f4; border: 2px solid #47616a; border-radius: 8px; padding: 10px 20px; font: inherit; }
+  button:focus { outline: 4px solid #b9e5c8; }
+  main { padding: 10vh 10vw; }
+  h1 { font-size: 64px; margin: 0 0 14px; }
+  p { color: #a5b8bc; max-width: 800px; line-height: 1.6; }
+  #tv-lyrics-overlay { top: 82px; }
+  video,ytmusic-player-bar { display: none; }
+</style>
+<nav><strong>TV Music / UI preview</strong><button id="browse">Browse</button><button id="lyrics">Lyrics</button><button id="play">Play / pause</button></nav>
+<main>
+  <p>OFFLINE DEVELOPMENT PREVIEW</p>
+  <h1>Room to listen.</h1>
+  <p>Original demo text and a simulated playback clock. This preview plays no audio and does not connect to YouTube or a lyrics service.</p>
+  <p>Choose Lyrics, then use arrows to scroll or seek, Enter to play or pause, and Escape to close this demo. The Android app provides a cursor controlled by your TV remote.</p>
+</main>
+<video></video>
+<ytmusic-player-bar><span class="title">Open skies</span><span class="byline">TV Music Demo</span></ytmusic-player-bar>
+<script src="../app/src/main/assets/lyrics/core.js"></script>
+<script src="../app/src/main/assets/tv.js"></script>
+<script src="preview.js"></script>
+</html>

@@ -1,0 +1,28 @@
+{
+  "package": "@braccato/core",
+  "version": "1.21.5",
+  "license": "MIT",
+  "repository": "https://github.com/better-lyrics/braccato",
+  "sourceCommit": "48b6d470ac7fd413932cd7b08287505070a89f68",
+  "commitEvidence": "https://registry.npmjs.org/-/npm/v1/attestations/@braccato%2fcore@1.21.5",
+  "registryTarball": "https://registry.npmjs.org/@braccato/core/-/core-1.21.5.tgz",
+  "registryIntegrity": "sha512-4JytjeNJncuM1CI6XneMfaUN/71tmM9cpe8CabcIJXc4Z1kFAi2GuEzf1BXQLyDzCROy450br1BZuo9WmGpSrw==",
+  "buildTool": "esbuild 0.25.12",
+  "javascriptSyntaxTarget": "Chrome 80",
+  "source": "Published npm package, verified by package-lock.json integrity during npm ci",
+  "modifications": "Unmodified renderer plus local built-in shims and conservative TV theme",
+  "files": {
+    "core.js": {
+      "bytes": 104027,
+      "sha256": "213e6e30d7216191b5ead52dcd02ce3c06af3be134ef85cbd35cdc2f5a0d3b43"
+    },
+    "core.css": {
+      "bytes": 18605,
+      "sha256": "d329721237e909d9146d3e0d430d661868825aead172ba3e114e6c040cb56792"
+    },
+    "LICENSE": {
+      "bytes": 1079,
+      "sha256": "49ca366562665dbb1d7bd4aa10681bf386cfdd7ff66328e75b5fa1947c74fe15"
+    }
+  }
+}

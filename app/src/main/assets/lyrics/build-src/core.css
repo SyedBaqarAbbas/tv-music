@@ -1,0 +1,4 @@
+@import "@braccato/core/styles/variables.css";
+@import "@braccato/core/styles/lyrics.css";
+@import "@braccato/core/styles/instrumental.css";
+@import "./theme.css";

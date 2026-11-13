@@ -1,0 +1,9 @@
+{
+  "name": "yt-music-tv-vendored-lyrics",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@braccato/core": "1.21.5",
+    "esbuild": "0.25.12"
+  }
+}
