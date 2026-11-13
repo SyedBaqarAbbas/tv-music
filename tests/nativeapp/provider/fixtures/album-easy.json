@@ -20,11 +20,6 @@
                                     "watchEndpoint": {
                                       "videoId": "14tbvcSdj0w",
                                       "playlistId": "OLAK5uy_lwciGzwX10K-Hfv0B4cD9-WSzODiUioaI",
-                                      "loggingContext": {
-                                        "vssLoggingContext": {
-                                          "serializedContextData": "GilPTEFLNXV5X2x3Y2lHendYMTBLLUhmdjBCNGNEOS1XU3pPRGlVaW9hSQ%3D%3D"
-                                        }
-                                      },
                                       "watchEndpointMusicSupportedConfigs": {
                                         "watchEndpointMusicConfig": {
                                           "musicVideoType": "MUSIC_VIDEO_TYPE_ATV"
@@ -80,11 +75,6 @@
                           "index": 0,
                           "playerParams": "ygYQQTAzRjJFRDIwRjMzRjRCQg%3D%3D",
                           "playlistSetVideoId": "A03F2ED20F33F4BB",
-                          "loggingContext": {
-                            "vssLoggingContext": {
-                              "serializedContextData": "GilPTEFLNXV5X2x3Y2lHendYMTBLLUhmdjBCNGNEOS1XU3pPRGlVaW9hSQ%3D%3D"
-                            }
-                          },
                           "watchEndpointMusicSupportedConfigs": {
                             "watchEndpointMusicConfig": {
                               "musicVideoType": "MUSIC_VIDEO_TYPE_ATV"
@@ -108,11 +98,6 @@
                                       "videoId": "bNKXxwOQYB8",
                                       "playlistId": "OLAK5uy_lwciGzwX10K-Hfv0B4cD9-WSzODiUioaI",
                                       "playerParams": "0gcJCTUC0OBS9m0t",
-                                      "loggingContext": {
-                                        "vssLoggingContext": {
-                                          "serializedContextData": "GilPTEFLNXV5X2x3Y2lHendYMTBLLUhmdjBCNGNEOS1XU3pPRGlVaW9hSQ%3D%3D"
-                                        }
-                                      },
                                       "watchEndpointMusicSupportedConfigs": {
                                         "watchEndpointMusicConfig": {
                                           "musicVideoType": "MUSIC_VIDEO_TYPE_OMV"
@@ -168,11 +153,6 @@
                           "index": 1,
                           "playerParams": "ygYQRTkzNDI0NkNGQ0FEQ0VBRNIHCQmuAbO-Yf046Q%3D%3D",
                           "playlistSetVideoId": "E934246CFCADCEAD",
-                          "loggingContext": {
-                            "vssLoggingContext": {
-                              "serializedContextData": "GilPTEFLNXV5X2x3Y2lHendYMTBLLUhmdjBCNGNEOS1XU3pPRGlVaW9hSQ%3D%3D"
-                            }
-                          },
                           "watchEndpointMusicSupportedConfigs": {
                             "watchEndpointMusicConfig": {
                               "musicVideoType": "MUSIC_VIDEO_TYPE_OMV"
@@ -195,11 +175,6 @@
                                     "watchEndpoint": {
                                       "videoId": "eNxb2wt11sM",
                                       "playlistId": "OLAK5uy_lwciGzwX10K-Hfv0B4cD9-WSzODiUioaI",
-                                      "loggingContext": {
-                                        "vssLoggingContext": {
-                                          "serializedContextData": "GilPTEFLNXV5X2x3Y2lHendYMTBLLUhmdjBCNGNEOS1XU3pPRGlVaW9hSQ%3D%3D"
-                                        }
-                                      },
                                       "watchEndpointMusicSupportedConfigs": {
                                         "watchEndpointMusicConfig": {
                                           "musicVideoType": "MUSIC_VIDEO_TYPE_ATV"
@@ -255,11 +230,6 @@
                           "index": 2,
                           "playerParams": "ygYQNzk0MUQ3RDZEMDRGRjJEMg%3D%3D",
                           "playlistSetVideoId": "7941D7D6D04FF2D2",
-                          "loggingContext": {
-                            "vssLoggingContext": {
-                              "serializedContextData": "GilPTEFLNXV5X2x3Y2lHendYMTBLLUhmdjBCNGNEOS1XU3pPRGlVaW9hSQ%3D%3D"
-                            }
-                          },
                           "watchEndpointMusicSupportedConfigs": {
                             "watchEndpointMusicConfig": {
                               "musicVideoType": "MUSIC_VIDEO_TYPE_ATV"
@@ -282,11 +252,6 @@
                                     "watchEndpoint": {
                                       "videoId": "KNexS61fjus",
                                       "playlistId": "OLAK5uy_lwciGzwX10K-Hfv0B4cD9-WSzODiUioaI",
-                                      "loggingContext": {
-                                        "vssLoggingContext": {
-                                          "serializedContextData": "GilPTEFLNXV5X2x3Y2lHendYMTBLLUhmdjBCNGNEOS1XU3pPRGlVaW9hSQ%3D%3D"
-                                        }
-                                      },
                                       "watchEndpointMusicSupportedConfigs": {
                                         "watchEndpointMusicConfig": {
                                           "musicVideoType": "MUSIC_VIDEO_TYPE_OMV"
@@ -342,11 +307,6 @@
                           "index": 3,
                           "playerParams": "ygYQMzk1RjAyMDc5Mzg5NkE0NQ%3D%3D",
                           "playlistSetVideoId": "395F020793896A45",
-                          "loggingContext": {
-                            "vssLoggingContext": {
-                              "serializedContextData": "GilPTEFLNXV5X2x3Y2lHendYMTBLLUhmdjBCNGNEOS1XU3pPRGlVaW9hSQ%3D%3D"
-                            }
-                          },
                           "watchEndpointMusicSupportedConfigs": {
                             "watchEndpointMusicConfig": {
                               "musicVideoType": "MUSIC_VIDEO_TYPE_OMV"
@@ -369,11 +329,6 @@
                                     "watchEndpoint": {
                                       "videoId": "nvGnwC2T6Ek",
                                       "playlistId": "OLAK5uy_lwciGzwX10K-Hfv0B4cD9-WSzODiUioaI",
-                                      "loggingContext": {
-                                        "vssLoggingContext": {
-                                          "serializedContextData": "GilPTEFLNXV5X2x3Y2lHendYMTBLLUhmdjBCNGNEOS1XU3pPRGlVaW9hSQ%3D%3D"
-                                        }
-                                      },
                                       "watchEndpointMusicSupportedConfigs": {
                                         "watchEndpointMusicConfig": {
                                           "musicVideoType": "MUSIC_VIDEO_TYPE_OMV"
@@ -429,11 +384,6 @@
                           "index": 4,
                           "playerParams": "ygYQOEFBNDMzQ0ZDOEYwNDY3Mg%3D%3D",
                           "playlistSetVideoId": "8AA433CFC8F04672",
-                          "loggingContext": {
-                            "vssLoggingContext": {
-                              "serializedContextData": "GilPTEFLNXV5X2x3Y2lHendYMTBLLUhmdjBCNGNEOS1XU3pPRGlVaW9hSQ%3D%3D"
-                            }
-                          },
                           "watchEndpointMusicSupportedConfigs": {
                             "watchEndpointMusicConfig": {
                               "musicVideoType": "MUSIC_VIDEO_TYPE_OMV"
@@ -456,11 +406,6 @@
                                     "watchEndpoint": {
                                       "videoId": "sCZT8P2VW2s",
                                       "playlistId": "OLAK5uy_lwciGzwX10K-Hfv0B4cD9-WSzODiUioaI",
-                                      "loggingContext": {
-                                        "vssLoggingContext": {
-                                          "serializedContextData": "GilPTEFLNXV5X2x3Y2lHendYMTBLLUhmdjBCNGNEOS1XU3pPRGlVaW9hSQ%3D%3D"
-                                        }
-                                      },
                                       "watchEndpointMusicSupportedConfigs": {
                                         "watchEndpointMusicConfig": {
                                           "musicVideoType": "MUSIC_VIDEO_TYPE_ATV"
@@ -516,11 +461,6 @@
                           "index": 5,
                           "playerParams": "ygYQRDM3RkYwQUM1QjRGNjQ4Rg%3D%3D",
                           "playlistSetVideoId": "D37FF0AC5B4F648F",
-                          "loggingContext": {
-                            "vssLoggingContext": {
-                              "serializedContextData": "GilPTEFLNXV5X2x3Y2lHendYMTBLLUhmdjBCNGNEOS1XU3pPRGlVaW9hSQ%3D%3D"
-                            }
-                          },
                           "watchEndpointMusicSupportedConfigs": {
                             "watchEndpointMusicConfig": {
                               "musicVideoType": "MUSIC_VIDEO_TYPE_ATV"
@@ -543,11 +483,6 @@
                                     "watchEndpoint": {
                                       "videoId": "Zhx_Nf76iUs",
                                       "playlistId": "OLAK5uy_lwciGzwX10K-Hfv0B4cD9-WSzODiUioaI",
-                                      "loggingContext": {
-                                        "vssLoggingContext": {
-                                          "serializedContextData": "GilPTEFLNXV5X2x3Y2lHendYMTBLLUhmdjBCNGNEOS1XU3pPRGlVaW9hSQ%3D%3D"
-                                        }
-                                      },
                                       "watchEndpointMusicSupportedConfigs": {
                                         "watchEndpointMusicConfig": {
                                           "musicVideoType": "MUSIC_VIDEO_TYPE_ATV"
@@ -603,11 +538,6 @@
                           "index": 6,
                           "playerParams": "ygYQODhGMTM0Q0Q4NURDOEIyMA%3D%3D",
                           "playlistSetVideoId": "88F134CD85DC8B20",
-                          "loggingContext": {
-                            "vssLoggingContext": {
-                              "serializedContextData": "GilPTEFLNXV5X2x3Y2lHendYMTBLLUhmdjBCNGNEOS1XU3pPRGlVaW9hSQ%3D%3D"
-                            }
-                          },
                           "watchEndpointMusicSupportedConfigs": {
                             "watchEndpointMusicConfig": {
                               "musicVideoType": "MUSIC_VIDEO_TYPE_ATV"

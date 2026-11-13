@@ -12,14 +12,19 @@ import androidx.media3.common.AudioAttributes;
 import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MediaMetadata;
+import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.Timeline;
 import androidx.media3.datasource.HttpDataSource;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.DefaultRenderersFactory;
+import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.DecoderCounters;
 import androidx.media3.exoplayer.analytics.AnalyticsListener;
 import androidx.media3.exoplayer.drm.DrmSessionManagerProvider;
+import androidx.media3.exoplayer.mediacodec.MediaCodecInfo;
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector;
 import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy;
 import dev.ytmusictv.nativeapp.model.NativeStreamResolver;
@@ -51,6 +56,8 @@ public final class NativePlaybackEngine implements AutoCloseable {
     private boolean shuffle, background, foreground, closed;
     private boolean videoVisible;
     private volatile boolean video;
+    private volatile int videoQuality;
+    private volatile long sourceEpoch;
     private String error = "";
     private String retryEntry = "";
     private long retryAt;
@@ -79,9 +86,10 @@ public final class NativePlaybackEngine implements AutoCloseable {
             @Override public MediaSource createMediaSource(MediaItem item) {
                 NativeTrack track = NativeTrack.fromBundle(item.mediaMetadata.extras);
                 if (track == null) throw new IllegalArgumentException("Queue entry has no track metadata");
+                long epoch = sourceEpoch;
                 return new ResolvingMediaSource(NativePlaybackEngine.this.context, item, track,
-                        NativePlaybackEngine.this.resolver, resolutions, () -> video, () -> main.post(() -> {
-                            if (closed || !video || !item.mediaId.equals(currentId())) return;
+                        NativePlaybackEngine.this.resolver, resolutions, () -> video, () -> videoQuality, () -> main.post(() -> {
+                            if (closed || epoch != sourceEpoch || !video || !item.mediaId.equals(currentId())) return;
                             video = false; error = "Video is unavailable for this recording. Audio is playing.";
                             player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
                                     .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true).build());
@@ -89,7 +97,24 @@ public final class NativePlaybackEngine implements AutoCloseable {
                         }));
             }
         };
-        player = new ExoPlayer.Builder(this.context).setMediaSourceFactory(sources)
+        DefaultRenderersFactory renderers = new DefaultRenderersFactory(this.context)
+                .setEnableDecoderFallback(false)
+                .setMediaCodecSelector((mime, secure, tunneling) -> {
+                    List<MediaCodecInfo> codecs = MediaCodecSelector.DEFAULT.getDecoderInfos(mime, secure, tunneling);
+                    if (!MimeTypes.VIDEO_VP9.equals(mime)) return codecs;
+                    // Optional high-resolution VP9 must never fall through to a software decoder.
+                    ArrayList<MediaCodecInfo> hardware = new ArrayList<>();
+                    for (MediaCodecInfo codec : codecs) {
+                        if (codec.hardwareAccelerated && !codec.softwareOnly) hardware.add(codec);
+                    }
+                    return hardware;
+                });
+        // Encoded sample-buffer target: 32 MiB, 10-20 s; start after 1.5 s, rebuffer after 3 s.
+        // This excludes codec surfaces/native decoder buffers and is not a total app memory cap.
+        DefaultLoadControl buffering = new DefaultLoadControl.Builder()
+                .setTargetBufferBytes(32 * 1024 * 1024).setBufferDurationsMs(10_000, 20_000, 1500, 3000)
+                .setPrioritizeTimeOverSizeThresholds(false).build();
+        player = new ExoPlayer.Builder(this.context, renderers).setMediaSourceFactory(sources).setLoadControl(buffering)
                 .setSeekBackIncrementMs(10_000).setSeekForwardIncrementMs(10_000).build();
         if ((context.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
             player.addAnalyticsListener(new AnalyticsListener() {
@@ -184,6 +209,13 @@ public final class NativePlaybackEngine implements AutoCloseable {
             case NativePlaybackCommands.CLEAR_UPCOMING: clearUpcoming(); break;
             case NativePlaybackCommands.UNDO: undo(); break;
             case NativePlaybackCommands.SET_VIDEO: setVideo(args.getBoolean("value")); break;
+            case NativePlaybackCommands.SET_VIDEO_QUALITY:
+                int quality = VideoQualityPolicy.require(args.getInt("quality", -1));
+                if (quality == videoQuality) return snapshot();
+                videoQuality = quality;
+                // Audio mode keeps its current source. The preference applies when video is enabled.
+                if (video) rebuildCurrent();
+                break;
             case NativePlaybackCommands.SET_SHUFFLE:
                 List<String> before = order(); shuffle = args.getBoolean("value");
                 applyTraversal(shuffle ? QueueOrder.shuffleUpcoming(before, currentId(), random) : baseOrder()); break;
@@ -337,6 +369,8 @@ public final class NativePlaybackEngine implements AutoCloseable {
     }
     private void rebuildCurrent() {
         if (player.getMediaItemCount() == 0) return;
+        // Reject a released source's fallback callback even when a quality change keeps the same entry ID.
+        sourceEpoch++;
         ArrayList<MediaItem> items = new ArrayList<>();
         for (int i = 0; i < player.getMediaItemCount(); i++) items.add(player.getMediaItemAt(i));
         int index = player.getCurrentMediaItemIndex(); long position = player.getCurrentPosition();
@@ -372,6 +406,7 @@ public final class NativePlaybackEngine implements AutoCloseable {
         result.putParcelableArrayList("entries", entries); result.putString("currentId", current);
         result.putStringArrayList("baseOrder", new ArrayList<>(baseOrder()));
         result.putBoolean("video", video); result.putBoolean("shuffle", shuffle); result.putBoolean("background", background);
+        result.putInt("videoQuality", videoQuality);
         result.putInt("repeat", player.getRepeatMode()); result.putString("error", error);
         result.putBoolean("canUndo", undoEntries != null && !undoEntries.isEmpty() && SystemClock.elapsedRealtime() <= undoExpires);
         return result;
@@ -387,7 +422,8 @@ public final class NativePlaybackEngine implements AutoCloseable {
         storage.save(snapshot(), player.getCurrentPosition());
     }
     private void restore() {
-        Bundle saved = storage.load(); ArrayList<Bundle> entries = saved.getParcelableArrayList("entries");
+        Bundle saved = storage.load(); videoQuality = VideoQualityPolicy.restored(saved.getInt("videoQuality", 0));
+        ArrayList<Bundle> entries = saved.getParcelableArrayList("entries");
         if (entries == null || entries.isEmpty()) return;
         ArrayList<MediaItem> items = new ArrayList<>(); HashSet<String> seen = new HashSet<>();
         ArrayList<String> savedTraversal = new ArrayList<>();

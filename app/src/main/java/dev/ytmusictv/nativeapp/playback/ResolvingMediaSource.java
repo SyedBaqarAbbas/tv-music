@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.function.BooleanSupplier;
+import java.util.function.IntSupplier;
 
 /** Resolve only a prepared entry, on one bounded worker; attach on playback looper. */
 @android.annotation.SuppressLint("UnsafeOptInUsageError")
@@ -33,6 +34,7 @@ final class ResolvingMediaSource extends CompositeMediaSource<Void> {
     private final NativeStreamResolver resolver;
     private final ThreadPoolExecutor worker;
     private final BooleanSupplier videoMode;
+    private final IntSupplier videoQuality;
     private final Runnable videoUnavailable;
     private MediaSource child;
     private Future<?> pending;
@@ -40,9 +42,9 @@ final class ResolvingMediaSource extends CompositeMediaSource<Void> {
     private long generation;
 
     ResolvingMediaSource(Context context, MediaItem item, NativeTrack track, NativeStreamResolver resolver,
-            ThreadPoolExecutor worker, BooleanSupplier videoMode, Runnable videoUnavailable) {
+            ThreadPoolExecutor worker, BooleanSupplier videoMode, IntSupplier videoQuality, Runnable videoUnavailable) {
         this.context = context; this.item = item; this.track = track; this.resolver = resolver;
-        this.worker = worker; this.videoMode = videoMode;
+        this.worker = worker; this.videoMode = videoMode; this.videoQuality = videoQuality;
         this.videoUnavailable = videoUnavailable;
     }
     @Override public MediaItem getMediaItem() { return item; }
@@ -52,20 +54,21 @@ final class ResolvingMediaSource extends CompositeMediaSource<Void> {
         Handler playback = new Handler(Looper.myLooper());
         long expected = ++generation;
         boolean wantsVideo = videoMode.getAsBoolean();
+        int wantedQuality = videoQuality.getAsInt();
         try {
             pending = worker.submit(() -> {
                 try {
                     PlaybackSource source;
                     boolean fallback = false;
-                    try { source = resolver.resolve(track, wantsVideo); }
+                    try { source = resolver.resolve(track, wantsVideo, wantedQuality); }
                     catch (Exception unavailable) {
                         if (!wantsVideo || Thread.currentThread().isInterrupted()) throw unavailable;
-                        source = resolver.resolve(track, false); fallback = true;
+                        source = resolver.resolve(track, false, wantedQuality); fallback = true;
                     }
                     // Avoid preparing a URL that is already expired or about to expire.
                     if (source != null && source.expiresAtMillis > 0
                             && source.expiresAtMillis <= System.currentTimeMillis() + 5000) {
-                        source = resolver.resolve(track, wantsVideo && !fallback);
+                        source = resolver.resolve(track, wantsVideo && !fallback, wantedQuality);
                     }
                     final PlaybackSource resolved = source;
                     final boolean audioFallback = fallback || (wantsVideo && source != null && !source.hasVideo());

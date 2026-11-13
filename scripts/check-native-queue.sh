@@ -13,9 +13,12 @@ javac -J-Xmx256m --release 17 -classpath "$framework_jar" -d "$classes_dir" \
     tests/fixtures/native-queue/android/content/SharedPreferences.java \
     tests/fixtures/native-queue/android/os/Bundle.java \
     app/src/main/java/dev/ytmusictv/nativeapp/model/NativeTrack.java \
+    app/src/main/java/dev/ytmusictv/nativeapp/model/NativeStreamResolver.java \
+    app/src/main/java/dev/ytmusictv/nativeapp/model/PlaybackSource.java \
     app/src/main/java/dev/ytmusictv/nativeapp/playback/QueueOrder.java \
     app/src/main/java/dev/ytmusictv/nativeapp/playback/CollectionBatch.java \
     app/src/main/java/dev/ytmusictv/nativeapp/playback/ArtworkRepair.java \
+    app/src/main/java/dev/ytmusictv/nativeapp/playback/VideoQualityPolicy.java \
     app/src/main/java/dev/ytmusictv/nativeapp/playback/QueueCheckpoint.java \
     tests/java/dev/ytmusictv/nativeapp/playback/NativeQueueTest.java
 java -Xmx64m -classpath "$classes_dir:$framework_jar" dev.ytmusictv.nativeapp.playback.NativeQueueTest

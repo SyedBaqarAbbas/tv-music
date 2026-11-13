@@ -19,10 +19,11 @@ public final class NativePlaybackCommands {
     public static final String SET_REPEAT = "native.repeat", SET_BACKGROUND = "native.background";
     public static final String APP_FOREGROUND = "native.foreground", RESTORE = "native.restore", RETRY = "native.retry";
     public static final String VIDEO_VISIBLE = "native.video_visible";
+    public static final String SET_VIDEO_QUALITY = "native.video_quality";
     public static final String QUEUE_CHANGED = "native.queue_changed";
     static final String[] ACTIONS = {PLAY_NOW, PLAY_NEXT, ADD_END, PLAY_COLLECTION, PLAY_NEXT_COLLECTION, ADD_COLLECTION,
             MOVE, REMOVE, UNDO, CLEAR_UPCOMING, REFRESH_ARTWORK, SNAPSHOT,
-            SET_VIDEO, SET_SHUFFLE, SET_REPEAT, SET_BACKGROUND, APP_FOREGROUND, VIDEO_VISIBLE, RESTORE, RETRY};
+            SET_VIDEO, SET_VIDEO_QUALITY, SET_SHUFFLE, SET_REPEAT, SET_BACKGROUND, APP_FOREGROUND, VIDEO_VISIBLE, RESTORE, RETRY};
 
     public static SessionCommand command(String action) { return new SessionCommand(action, Bundle.EMPTY); }
     public static Bundle trackArgs(NativeTrack track) {
@@ -54,5 +55,8 @@ public final class NativePlaybackCommands {
     }
     public static Bundle repeatArgs(int mode) {
         Bundle args = new Bundle(); args.putInt("value", mode); return args;
+    }
+    public static Bundle videoQualityArgs(int quality) {
+        Bundle args = new Bundle(); args.putInt("quality", VideoQualityPolicy.require(quality)); return args;
     }
 }

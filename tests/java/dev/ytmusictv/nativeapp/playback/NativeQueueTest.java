@@ -4,6 +4,9 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import dev.ytmusictv.nativeapp.model.NativeTrack;
+import dev.ytmusictv.nativeapp.model.NativeStreamResolver;
+import dev.ytmusictv.nativeapp.model.PlaybackSource;
+import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -51,6 +54,7 @@ public final class NativeQueueTest {
                 List.of("history", "current", "shuffled-C", "shuffled-B"), "current"));
         collections();
         artwork();
+        quality();
         persistence();
         System.out.println("Native queue/checkpoint checks passed: " + checks);
     }
@@ -164,6 +168,40 @@ public final class NativeQueueTest {
             entries.add(row); base.add("entry-" + i);
         }
         result.putParcelableArrayList("entries", entries); result.putStringArrayList("baseOrder", base); return result;
+    }
+    private static void quality() {
+        for(int allowed : new int[]{0,360,480,720,1080,2160}) {
+            check(VideoQualityPolicy.require(allowed) == allowed);
+            MemoryContext context = new MemoryContext(); QueueCheckpoint storage = new QueueCheckpoint(context);
+            Bundle state = state(3); state.putInt("videoQuality", allowed);
+            state.putString("currentId", "entry-1"); state.putBoolean("shuffle", true);state.putBoolean("video", true);
+            state.putStringArrayList("baseOrder", new ArrayList<>(List.of("entry-0","entry-2","entry-1")));
+            storage.save(state, 83_456); Bundle restored = storage.load();
+            check(restored.getInt("videoQuality", -1) == allowed);
+            check(restored.getLong("position") == 83_456 && "entry-1".equals(restored.getString("currentId"))
+                    && restored.getBoolean("shuffle") && restored.getBoolean("video"));
+            equal(List.of("entry-0","entry-2","entry-1"),restored.getStringArrayList("baseOrder"));
+        }
+        for(int invalid : new int[]{-1,144,240,540,1440,2880,4320,Integer.MAX_VALUE}) {
+            rejects(() -> VideoQualityPolicy.require(invalid));
+            check(VideoQualityPolicy.restored(invalid) == 0);
+        }
+        MemoryContext context = new MemoryContext(); QueueCheckpoint storage = new QueueCheckpoint(context);
+        storage.save(state(1), 0);
+        try { context.value = new JSONObject(context.value).put("videoQuality",4320).toString(); }
+        catch(Exception invalid) { throw new AssertionError(invalid); }
+        check(storage.load().getInt("videoQuality", -1) == 0); // Unknown/corrupt caps never enable unbounded resolution.
+        try { JSONObject legacy = new JSONObject(context.value); legacy.remove("videoQuality"); context.value = legacy.toString(); }
+        catch(Exception invalid) { throw new AssertionError(invalid); }
+        check(storage.load().getInt("videoQuality", -1) == 0); // Checkpoints from before quality selection remain Auto.
+        Bundle empty = state(0); empty.putInt("videoQuality",1080);storage.save(empty,0);
+        check(storage.load().getInt("videoQuality",-1) == 1080); // Preference survives even an empty queue.
+        NativeTrack requested = new NativeTrack("song", "", "", "", 0, "", false);
+        PlaybackSource expected = new PlaybackSource("https://media.example/audio", "", "audio/mp4", "", Map.of(), 0);
+        int[] calls = {0};
+        NativeStreamResolver existing = (track,video) -> {check(track == requested && video);calls[0]++;return expected;};
+        try { check(existing.resolve(requested,true,1080) == expected && calls[0] == 1); }
+        catch(Exception invalid) { throw new AssertionError(invalid); }
     }
     private static final class MemoryContext extends Context {
         String value = "";

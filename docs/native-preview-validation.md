@@ -28,7 +28,7 @@ reports 2 GiB RAM. This is an initial native preview, not sustained hardware qua
 | Hidden video | Leaving Now Playing logged video-decoder disable while the media clock/audio continued. |
 | Account session | The app-owned bootstrap reports `LOGGED_IN=true` after upgrade/restart. Liked playlist returned HTTP 200 with zero track rows; populated account-content access remains unverified. |
 | Account window | Native Account opens SignInActivity; Back returns to the native screen and refreshes liked songs. No account-page screenshot was taken. |
-| Offline tests | 268 native checks pass: 91 queue/checkpoint, 122 catalogue/bootstrap/message/album and 55 artwork URL cases. Existing 4 LRC parser, 36 matching, 12 lyric-provider and 31 account-navigation cases also pass. |
+| Offline tests | 509 native checks pass: 136 queue/checkpoint, 122 catalogue/bootstrap/message/album, 55 artwork URL, 84 stream-selection/budget and 112 WebM/VP9-header cases. Existing 4 LRC parser, 36 matching, 12 lyric-provider and 31 account-navigation cases also pass. |
 
 Screenshots and raw local samples are in the ignored `.tools/design-qa/` directory.
 They include search, track actions, native listening room, queue and reorder states.
@@ -113,3 +113,65 @@ scan code **195**, with both Down and Up logged. Web opens the TV's browser and
 did not appear in the app's shortcut log. The user requested leaving Web as-is
 because the keyboard shortcut is sufficient. No global remapping or
 Accessibility service is used.
+
+## Fullscreen video and quality follow-up
+
+Version `0.7.6-native-preview` (code 14) was built and installed on the TCL.
+The final Gradle log reports `assembleDebug`, `lintDebug` and `BUILD SUCCESSFUL`.
+Fullscreen expands the existing video surface/player without changing sources.
+SurfaceFlinger reported a 1920×1080 display frame for a 1280×720 source; a bounded
+PixelCopy capture confirmed real video content. The ordinary screencap can omit
+this TV's hardware video plane. Controls, remote focus and the seek rail were
+visually inspected on the device.
+
+The final fullscreen controls include separate Rewind 10s/Forward 10s actions,
+track Previous/Next, Quality, a seek rail and Exit full screen. Down from a
+button focused the seek rail; Right moved the paused position by exactly
+10,000 ms, retaining the current entry. Following the user's preference, the
+first Back hides visible controls while retaining the fullscreen 1920×1080
+stage; a second Back returns to the normal player and focuses Full screen.
+Both steps were checked in the final APK. Search also restored the normal
+layout and opened its keyboard. Hidden fullscreen controls suspend the
+transport tick and lyric work; the controls hide task is a one-shot timer.
+
+The quality selector offers Auto (maximum 720p), 360p, 480p, 720p and 1080p.
+Public stream probes selected 360p and 1080p AVC/MP4 at 30 fps from one extraction,
+with successful HTTP 206 byte-range responses. On the TCL, the actual displayed
+video dimensions changed from 1920×1080 to 640×360. The controlled paused quality
+change retained exactly 26,450 ms and the same queue-entry IDs/order. After
+restoring 1080p and updating/restarting the app, the same current entry, queue,
+1080p preference and 36,450 ms paused position were retained. These are initial
+hardware checks; sustained 1080p performance has not been qualified.
+
+
+## Optional 4K (2160p)
+
+Version `0.8.0-native-preview` (code 15) passed Android assembly/lint and was
+installed on the TCL. The quality menu includes opt-in 4K (2160p); Auto retains
+its 720p ceiling. A small, temporary app_process query confirmed hardware
+`OMX.realtek.video.decoder` support for VP9 profile 0 and 3840×2160, 3840×1634
+and 3350×2160 at 24 fps. Software decoders reported unsupported for those sizes
+and are excluded from the VP9 playback path. The temporary probe was removed.
+
+Actual public prefixes for Drama (3840×1634) and LEMONADE (3350×2160) passed the
+production WebM/profile-0/8-bit/SDR validation. Requests are limited to two exact
+256 KiB ranges, with deadlines and interruption checks, only for explicit 4K.
+Synthetic regression fixtures cover malformed/truncated parents, duplicate
+colour overrides, HDR, encryption, lacing, dimension mismatch and probe budgets.
+Raw media prefixes and signed source URLs are excluded from the repository.
+
+On the TV, Chu~♡ (Live) [Cover] played as 3840×2160 VP9. The resource manager
+associated the app process with `OMX.realtek.video.decoder`; released-codec
+metrics confirmed VP9, width 3840 and height 2160. SurfaceFlinger showed a
+3840×2160 source crop with BT.709 output. A bounded PixelCopy image contained a
+real video frame (`.tools/design-qa/4k-rendered-frame.png`). The interface's
+1920×1080 coordinates were not changed; these measurements establish decoded
+4K buffers and do not independently measure the physical panel's pixel grid.
+
+Leaving Now Playing for Search disabled video decoding and reported 4,394
+rendered frames, zero dropped and zero skipped over a roughly 147-second codec
+lifetime. Returning resumed video; current entry and queue IDs/order were
+preserved, with the 2160p preference saved. This is a short hardware sample,
+not sustained 4K qualification. An app-memory sample reported 143,903 KiB PSS
+(about 141 MiB); vendor codec/service allocations are additional. Encoded
+buffering targets 32 MiB with a 10–20-second window, not a total app memory cap.

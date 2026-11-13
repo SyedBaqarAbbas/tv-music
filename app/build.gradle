@@ -11,8 +11,8 @@ android {
         applicationId 'dev.ytmusictv'
         minSdk 26
         targetSdk 35
-        versionCode 11
-        versionName '0.7.3-native-preview'
+        versionCode 15
+        versionName '0.8.0-native-preview'
     }
 
     compileOptions {

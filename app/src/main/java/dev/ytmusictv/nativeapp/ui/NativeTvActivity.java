@@ -84,7 +84,7 @@ public final class NativeTvActivity extends Activity {
     private NativeMusicProvider provider;
     private MediaController controller;
     private ListenableFuture<MediaController> connection;
-    private LinearLayout root,nav,mini;
+    private LinearLayout root,nav,mini,nowIdentity,nowControls,nowProgress;
     private FrameLayout content,artFrame,header,mediaStage;
     private Button controlsHandle;
     private boolean chromeExpanded;
@@ -100,8 +100,19 @@ public final class NativeTvActivity extends Activity {
     private TextView voiceStatus;
     private ProgressBar voiceLevel;
     private long voiceLevelAt;
-    private SeekBar seek;
-    private Button play,miniPlay,modeButton,lyricsButton,undoButton,shuffleButton,repeatButton;
+    private SeekBar seek,fullscreenSeek;
+    private boolean fullscreenSeeking;
+    private Button play,miniPlay,modeButton,lyricsButton,undoButton,shuffleButton,repeatButton,fullScreenButton,qualityButton;
+    private FrameLayout fullscreenOverlay;
+    private Button fullscreenPlay,fullscreenRetry,fullscreenQuality;
+    private AlertDialog qualityDialog;
+    private int videoQuality;
+    private TextView fullscreenTitle,fullscreenTime,fullscreenState;
+    private boolean fullscreen,fullscreenControlsVisible,fullscreenWasPlaying,fullscreenHadError;
+    private int previousSystemUi;
+    private final Runnable hideFullscreenControlsTask=()->{
+        if(fullscreen&&this.foreground&&qualityDialog==null&&!fullscreenSeeking&&controller!=null&&controller.isPlaying()&&!fullscreenHasError())hideFullscreenControls();
+    };
     private SurfaceView video;
     private NativeArtworkView artwork;
     private boolean surfaceAttached;
@@ -127,7 +138,7 @@ public final class NativeTvActivity extends Activity {
     private String pendingArtworkRepair="";
     private long artworkRepairGeneration;
     private final Runnable tick=new Runnable(){@Override public void run(){
-        if(!foreground)return;updateTransport();if(screen==Screen.NOW&&lyricsShown)lyrics.updateClock();
+        if(!foreground||(fullscreen&&!fullscreenControlsVisible))return;updateTransport();if(screen==Screen.NOW&&lyricsShown&&!fullscreen)lyrics.updateClock();
         if(controller!=null&&controller.isPlaying())main.postDelayed(this,500);
     }};
     private final Player.Listener playerListener=new Player.Listener(){
@@ -244,7 +255,7 @@ public final class NativeTvActivity extends Activity {
     }
     private View createNow(){
         LinearLayout page=vertical();LinearLayout room=new LinearLayout(this);room.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout identity=vertical();identity.setPadding(dp(10),dp(14),dp(26),dp(14));
+        LinearLayout identity=nowIdentity=vertical();identity.setPadding(dp(10),dp(14),dp(26),dp(14));
         nowEyebrow=NativeUi.text(this,"NOW PLAYING",11,NativeUi.GOLD);identity.addView(nowEyebrow,new LinearLayout.LayoutParams(-1,dp(28)));
         nowTitle=NativeUi.text(this,"Nothing playing yet",26,NativeUi.INK);NativeUi.heading(nowTitle);nowTitle.setMaxLines(2);
         identity.addView(nowTitle,new LinearLayout.LayoutParams(-1,-2));
@@ -254,6 +265,7 @@ public final class NativeTvActivity extends Activity {
         artwork=new NativeArtworkView(this);
         artFrame.addView(artwork,new FrameLayout.LayoutParams(-1,-1));
         video=new SurfaceView(this);video.setVisibility(View.GONE);artFrame.addView(video,new FrameLayout.LayoutParams(-1,-1));
+        artFrame.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,oright,ob)->fitVideoFrame());
         mediaStage=new FrameLayout(this);
         mediaStage.addView(artFrame,new FrameLayout.LayoutParams(dp(200),dp(200),Gravity.CENTER));
         mediaStage.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,oright,ob)->sizeMediaFrame());
@@ -266,15 +278,17 @@ public final class NativeTvActivity extends Activity {
             public void seek(long position){if(controller!=null){controller.seekTo(position);updateTransport();lyrics.updateClock();}}
         });
         room.addView(lyrics,new LinearLayout.LayoutParams(0,-1,3));page.addView(room,new LinearLayout.LayoutParams(-1,0,1));
-        LinearLayout controls=new LinearLayout(this);controls.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout controls=nowControls=new LinearLayout(this);controls.setGravity(Gravity.CENTER_VERTICAL);
         add(controls,"Previous",this::previous);play=add(controls,"Play",this::togglePlay);add(controls,"Next",this::next);
         lyricsButton=add(controls,"Lyrics",()->{lyricsShown=!lyricsShown;updateNow();});
         add(controls,"Queue",()->show(Screen.QUEUE,true));
         modeButton=add(controls,"Video",()->send(NativePlaybackCommands.SET_VIDEO,NativePlaybackCommands.boolArgs(!videoMode),""));
+        fullScreenButton=add(controls,"Full screen",this::enterFullscreen);fullScreenButton.setVisibility(View.GONE);
+        qualityButton=add(controls,"Quality",this::showVideoQuality);qualityButton.setVisibility(View.GONE);
         add(controls,"Restart",()->{if(controller!=null)controller.seekTo(0);});
         add(controls,"Retry",()->send(NativePlaybackCommands.RETRY,Bundle.EMPTY,"Retrying playback…"));
         page.addView(controls,new LinearLayout.LayoutParams(-1,dp(48)));
-        LinearLayout progress=new LinearLayout(this);progress.setGravity(Gravity.CENTER_VERTICAL);progress.setBaselineAligned(false);
+        LinearLayout progress=nowProgress=new LinearLayout(this);progress.setGravity(Gravity.CENTER_VERTICAL);progress.setBaselineAligned(false);
         time=NativeUi.text(this,"0:00 / —",13,NativeUi.MUTED);
         time.setSingleLine(true);time.setHorizontallyScrolling(false);time.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
         time.setTextDirection(View.TEXT_DIRECTION_LTR);time.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_START);
@@ -291,7 +305,8 @@ public final class NativeTvActivity extends Activity {
             public void onStopTrackingTouch(SeekBar bar){seeking=false;if(controller!=null&&durationMs()>0)controller.seekTo(durationMs()*bar.getProgress()/1000);}
             public void onProgressChanged(SeekBar bar,int value,boolean fromUser){}
         });
-        progress.addView(seek,new LinearLayout.LayoutParams(0,dp(38),1));page.addView(progress,new LinearLayout.LayoutParams(-1,dp(38)));return page;
+        progress.addView(seek,new LinearLayout.LayoutParams(0,dp(38),1));page.addView(progress,new LinearLayout.LayoutParams(-1,dp(38)));
+        createFullscreenOverlay();return page;
     }
     private View createQueue(){
         LinearLayout page=vertical();LinearLayout tools=new LinearLayout(this);tools.setGravity(Gravity.CENTER_VERTICAL);
@@ -322,6 +337,9 @@ public final class NativeTvActivity extends Activity {
         row.addView(b,p);return b;
     }
     private void show(Screen destination,boolean record){
+        if(fullscreen&&destination==Screen.NOW){updateNow();updateTransport();return;}
+        if(destination!=Screen.NOW)dismissQualityDialog();
+        if(fullscreen&&destination!=Screen.NOW)exitFullscreen(false);
         if(destination!=Screen.SEARCH&&(voiceInFlight||voiceResumeReady||voiceDialog!=null))cancelNativeVoice(false,false);
         View focused=getCurrentFocus();if(focused!=null)retainedFocus.put(screen,focused);
         hideKeyboard();
@@ -566,8 +584,9 @@ public final class NativeTvActivity extends Activity {
         undoButton.setEnabled(snapshot.getBoolean("canUndo",false));
         videoMode=snapshot.getBoolean("video",videoMode);shuffle=snapshot.getBoolean("shuffle",shuffle);
         repeat=snapshot.getInt("repeat",repeat);background=snapshot.getBoolean("background",background);
+        videoQuality=snapshot.getInt("videoQuality",videoQuality);
         String error=snapshot.getString("error","");if(error.isEmpty())error=actionError;lastError=error;
-        if(!error.isEmpty()){status.setText(error);status.setVisibility(View.VISIBLE);}
+        if(!error.isEmpty()){status.setText(error);status.setVisibility(fullscreen?View.GONE:View.VISIBLE);}
         else if(screen==Screen.NOW)status.setVisibility(View.GONE);
         shuffleButton.setText(shuffle?"Shuffle on":"Shuffle off");
         repeatButton.setText(repeat==Player.REPEAT_MODE_ONE?"Repeat one":repeat==Player.REPEAT_MODE_ALL?"Repeat all":"Repeat off");
@@ -588,15 +607,20 @@ public final class NativeTvActivity extends Activity {
     }
     private void updateNow(){
         if(nowTitle==null)return;
+        if(!videoMode)dismissQualityDialog();
+        if(fullscreen&&(!foreground||screen!=Screen.NOW||!videoMode||playing==null)){exitFullscreen(false);return;}
         updateVideoVisibility();maybeRepairMissingArtwork();
+        fullScreenButton.setVisibility(videoMode&&playing!=null?View.VISIBLE:View.GONE);
+        fullScreenButton.setEnabled(controller!=null&&playing!=null);
+        qualityButton.setVisibility(videoMode&&playing!=null?View.VISIBLE:View.GONE);qualityButton.setEnabled(controller!=null);
         nowTitle.setText(playing==null?"Nothing playing yet":playing.title);
         nowArtist.setText(playing==null?"Find a song and make it yours.":playing.artist);
         lyricsButton.setText(lyricsShown?"Hide lyrics":"Lyrics");modeButton.setText(videoMode?"Audio":"Video");
-        lyrics.setVisibility(lyricsShown?View.VISIBLE:View.GONE);
+        lyrics.setVisibility(lyricsShown&&!fullscreen?View.VISIBLE:View.GONE);
         int alignment=lyricsShown?Gravity.LEFT|Gravity.CENTER_VERTICAL:Gravity.CENTER;
         nowTitle.setGravity(alignment);nowArtist.setGravity(alignment);nowEyebrow.setGravity(alignment);playbackState.setGravity(alignment);
         sizeMediaFrame();
-        lyrics.showTrack(playing,screen==Screen.NOW&&lyricsShown&&foreground);
+        lyrics.showTrack(playing,screen==Screen.NOW&&lyricsShown&&foreground&&!fullscreen);
         artwork.setVisibility(videoMode?View.GONE:View.VISIBLE);video.setVisibility(videoMode?View.VISIBLE:View.GONE);
         if(screen==Screen.NOW&&foreground&&!videoMode&&playing!=null)artwork.load(playing.thumbnailUrl);
         else if(videoMode)artwork.stopLoading();
@@ -611,6 +635,7 @@ public final class NativeTvActivity extends Activity {
         if(bounds.width!=width||bounds.height!=height){bounds.width=width;bounds.height=height;bounds.gravity=Gravity.CENTER;artFrame.setLayoutParams(bounds);}
     }
     private void updateTransport(){
+        video.setKeepScreenOn(fullscreen&&foreground&&controller!=null&&controller.isPlaying());
         if(controller==null)return;
         String label=controller.isPlaying()?"Pause":"Play";textChanged(miniPlay,label);textChanged(play,label);
         textChanged(miniTitle,playing==null?"Choose your next listen":playing.title+"  ·  "+playing.artist);
@@ -618,21 +643,197 @@ public final class NativeTvActivity extends Activity {
         String progressText=NativeUi.time(at)+" / "+(duration>0?NativeUi.time(duration):"—");
         if(!progressText.contentEquals(time.getText())){time.setText(progressText);time.scrollTo(0,0);}
         if(!seeking)seek.setProgress(duration>0?(int)Math.min(1000,at*1000/duration):0);
-        if(videoMode&&controller.getVideoSize().width>0&&controller.getVideoSize().height>0){
-            float aspect=controller.getVideoSize().width*controller.getVideoSize().pixelWidthHeightRatio/controller.getVideoSize().height;
-            int availableWidth=artFrame.getWidth(),availableHeight=artFrame.getHeight();
-            if(availableWidth>0&&availableHeight>0){int width=availableWidth,height=Math.round(width/aspect);
-                if(height>availableHeight){height=availableHeight;width=Math.round(height*aspect);}
-                FrameLayout.LayoutParams bounds=(FrameLayout.LayoutParams)video.getLayoutParams();
-                if(bounds.width!=width||bounds.height!=height){bounds.width=width;bounds.height=height;bounds.gravity=Gravity.CENTER;video.setLayoutParams(bounds);}}
-        }
-        textChanged(playbackState,!lastError.isEmpty()?lastError:controller.getPlayerError()!=null?"Playback interrupted · Retry or choose another track."
+        fitVideoFrame();
+        String state=!lastError.isEmpty()?lastError:controller.getPlayerError()!=null?"Playback interrupted · Retry or choose another track."
                 :controller.getPlaybackState()==Player.STATE_BUFFERING?"Getting your music ready…"
-                :playing==null?"":controller.isPlaying()?(videoMode?"VIDEO":"AUDIO"):"PAUSED");
-        if(screen==Screen.NOW&&lyricsShown)lyrics.updateClock();
+                :playing==null?"":controller.isPlaying()?(videoMode?"VIDEO":"AUDIO"):"PAUSED";
+        if(videoMode&&playing!=null&&lastError.isEmpty()&&controller.getPlayerError()==null)state+=" · "+videoQualityStatus();
+        textChanged(playbackState,state);
+        if(screen==Screen.NOW&&lyricsShown&&!fullscreen)lyrics.updateClock();
+        if(fullscreen){status.setVisibility(View.GONE);updateFullscreenTransport(progressText);}
+    }
+    private void fitVideoFrame(){
+        if(controller==null||!videoMode||controller.getVideoSize().width<1||controller.getVideoSize().height<1)return;
+        float aspect=controller.getVideoSize().width*controller.getVideoSize().pixelWidthHeightRatio/controller.getVideoSize().height;
+        if(!Float.isFinite(aspect)||aspect<=0)return;
+        int availableWidth=artFrame.getWidth(),availableHeight=artFrame.getHeight();
+        if(availableWidth<1||availableHeight<1)return;
+        int width=availableWidth,height=Math.round(width/aspect);
+        if(height>availableHeight){height=availableHeight;width=Math.round(height*aspect);}
+        FrameLayout.LayoutParams bounds=(FrameLayout.LayoutParams)video.getLayoutParams();
+        if(bounds.width!=width||bounds.height!=height){bounds.width=width;bounds.height=height;bounds.gravity=Gravity.CENTER;video.setLayoutParams(bounds);}
     }
     private long durationMs(){if(controller==null)return 0;long d=controller.getDuration();return d==C.TIME_UNSET||d<0?0:d;}
-    private void scheduleClock(){main.removeCallbacks(tick);if(foreground&&controller!=null&&controller.isPlaying())main.post(tick);}
+    private void scheduleClock(){main.removeCallbacks(tick);if(foreground&&controller!=null&&controller.isPlaying()&&(!fullscreen||fullscreenControlsVisible))main.post(tick);}
+    private void createFullscreenOverlay(){
+        fullscreenOverlay=new FrameLayout(this);fullscreenOverlay.setVisibility(View.GONE);
+        LinearLayout panel=vertical();panel.setPadding(dp(24),dp(14),dp(24),dp(14));panel.setBackgroundColor(0xe6111217);
+        fullscreenTitle=NativeUi.text(this,"",20,NativeUi.INK);NativeUi.heading(fullscreenTitle);fullscreenTitle.setSingleLine(true);
+        panel.addView(fullscreenTitle,new LinearLayout.LayoutParams(-1,dp(34)));
+        fullscreenState=NativeUi.text(this,"",12,NativeUi.MUTED);fullscreenState.setMaxLines(2);
+        panel.addView(fullscreenState,new LinearLayout.LayoutParams(-1,dp(34)));
+        LinearLayout buttons=new LinearLayout(this);buttons.setGravity(Gravity.CENTER_VERTICAL);
+        add(buttons,"Previous",this::previous);add(buttons,"Rewind 10s",()->{seekRelative(-10_000);updateTransport();});
+        fullscreenPlay=add(buttons,"Pause",this::togglePlay);
+        add(buttons,"Forward 10s",()->{seekRelative(10_000);updateTransport();});add(buttons,"Next",this::next);
+        fullscreenRetry=add(buttons,"Retry",()->send(NativePlaybackCommands.RETRY,Bundle.EMPTY,"Retrying playback…"));
+        fullscreenRetry.setVisibility(View.GONE);
+        fullscreenQuality=add(buttons,"Quality",this::showVideoQuality);
+        Button exitFullScreen=add(buttons,"Exit full screen",()->exitFullscreen(true));
+        panel.addView(buttons,new LinearLayout.LayoutParams(-1,dp(44)));
+        LinearLayout rail=new LinearLayout(this);rail.setGravity(Gravity.CENTER_VERTICAL);rail.setBaselineAligned(false);
+        fullscreenTime=NativeUi.text(this,"",13,NativeUi.INK);fullscreenTime.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
+        fullscreenTime.setTextDirection(View.TEXT_DIRECTION_LTR);fullscreenTime.setSingleLine(true);fullscreenTime.setHorizontallyScrolling(false);
+        rail.addView(fullscreenTime,new LinearLayout.LayoutParams(dp(115),dp(38)));
+        fullscreenSeek=new SeekBar(this);fullscreenSeek.setId(View.generateViewId());fullscreenSeek.setMax(1000);
+        fullscreenSeek.setProgressTintList(android.content.res.ColorStateList.valueOf(NativeUi.GOLD));
+        fullscreenSeek.setThumbTintList(android.content.res.ColorStateList.valueOf(NativeUi.GOLD));
+        fullscreenSeek.setNextFocusUpId(fullscreenPlay.getId());fullscreenSeek.setNextFocusDownId(exitFullScreen.getId());
+        fullscreenSeek.setOnKeyListener((view,key,event)->{
+            if(key==KeyEvent.KEYCODE_DPAD_LEFT||key==KeyEvent.KEYCODE_DPAD_RIGHT){
+                if(event.getAction()==KeyEvent.ACTION_DOWN){seekRelative(key==KeyEvent.KEYCODE_DPAD_LEFT?-10_000:10_000);updateTransport();}
+                return true;
+            }return false;
+        });
+        fullscreenSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+            public void onStartTrackingTouch(SeekBar bar){fullscreenSeeking=true;main.removeCallbacks(hideFullscreenControlsTask);}
+            public void onStopTrackingTouch(SeekBar bar){
+                fullscreenSeeking=false;
+                if(fullscreen&&foreground&&controller!=null&&durationMs()>0)controller.seekTo(durationMs()*bar.getProgress()/1000);
+                armFullscreenHide();
+            }
+            public void onProgressChanged(SeekBar bar,int value,boolean fromUser){}
+        });
+        rail.addView(fullscreenSeek,new LinearLayout.LayoutParams(0,dp(38),1));panel.addView(rail,new LinearLayout.LayoutParams(-1,dp(38)));
+        for(int index=0;index<buttons.getChildCount();index++){
+            View button=buttons.getChildAt(index);if(!button.isFocusable())continue;
+            button.setNextFocusUpId(View.NO_ID);button.setNextFocusDownId(fullscreenSeek.getId());
+        }
+        fullscreenOverlay.addView(panel,new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM));
+    }
+    private void enterFullscreen(){
+        if(fullscreen||!foreground||screen!=Screen.NOW||!videoMode||playing==null||controller==null)return;
+        fullscreen=true;previousSystemUi=getWindow().getDecorView().getSystemUiVisibility();
+        fullscreenWasPlaying=controller.isPlaying();fullscreenHadError=fullscreenHasError();
+        applyFullscreenLayout();lyrics.stop();artwork.stopLoading();updateNow();updateTransport();showFullscreenControls(true);
+    }
+    private void exitFullscreen(boolean restoreFocus){
+        if(!fullscreen)return;
+        fullscreen=false;fullscreenControlsVisible=false;fullscreenSeeking=false;main.removeCallbacks(hideFullscreenControlsTask);
+        content.removeView(fullscreenOverlay);fullscreenOverlay.setVisibility(View.GONE);
+        applyFullscreenLayout();getWindow().getDecorView().setSystemUiVisibility(previousSystemUi);
+        updateNow();updateTransport();scheduleClock();
+        if(restoreFocus&&foreground&&screen==Screen.NOW)main.post(()->{if(!fullscreen&&foreground&&fullScreenButton.isShown())focusTarget(fullScreenButton);});
+    }
+    private void applyFullscreenLayout(){
+        root.setPadding(fullscreen?0:dp(24),fullscreen?0:dp(14),fullscreen?0:dp(24),fullscreen?0:dp(14));
+        root.setBackgroundColor(fullscreen?android.graphics.Color.BLACK:NativeUi.BG);
+        header.setVisibility(fullscreen?View.GONE:View.VISIBLE);mini.setVisibility(screen==Screen.NOW?View.GONE:View.VISIBLE);
+        status.setVisibility(fullscreen||screen==Screen.NOW&&lastError.isEmpty()?View.GONE:View.VISIBLE);
+        nowIdentity.setPadding(fullscreen?0:dp(10),fullscreen?0:dp(14),fullscreen?0:dp(26),fullscreen?0:dp(14));
+        for(View view:new View[]{nowEyebrow,nowTitle,nowArtist,playbackState,nowControls,nowProgress})view.setVisibility(fullscreen?View.GONE:View.VISIBLE);
+        lyrics.setVisibility(!fullscreen&&lyricsShown?View.VISIBLE:View.GONE);
+        artFrame.setBackground(fullscreen?null:NativeUi.fill(this,NativeUi.CARD,false));
+        if(fullscreen)artFrame.setBackgroundColor(android.graphics.Color.BLACK);
+        mediaStage.setFocusable(fullscreen);mediaStage.setFocusableInTouchMode(fullscreen);
+        if(fullscreen){
+            if(fullscreenOverlay.getParent()==null)content.addView(fullscreenOverlay,new FrameLayout.LayoutParams(-1,-1));
+            applyFullscreenSystemUi();
+        }
+        root.requestLayout();
+    }
+    private void applyFullscreenSystemUi(){
+        if(fullscreen)getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                |View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                |View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN|View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+    }
+    @Override public void onWindowFocusChanged(boolean focused){
+        super.onWindowFocusChanged(focused);if(focused&&fullscreen)applyFullscreenSystemUi();
+    }
+    private boolean fullscreenHasError(){return !lastError.isEmpty()||controller!=null&&controller.getPlayerError()!=null;}
+    private void armFullscreenHide(){
+        main.removeCallbacks(hideFullscreenControlsTask);
+        if(fullscreen&&fullscreenControlsVisible&&foreground&&qualityDialog==null&&!fullscreenSeeking&&controller!=null&&controller.isPlaying()&&!fullscreenHasError())main.postDelayed(hideFullscreenControlsTask,5000);
+    }
+    private void showFullscreenControls(boolean transferFocus){
+        if(!fullscreen)return;fullscreenControlsVisible=true;fullscreenOverlay.setVisibility(View.VISIBLE);mediaStage.setFocusable(false);
+        if(transferFocus||!fullscreenOverlay.hasFocus())focusTarget(fullscreenPlay);
+        updateTransport();scheduleClock();armFullscreenHide();
+    }
+    private void hideFullscreenControls(){
+        if(!fullscreen)return;main.removeCallbacks(hideFullscreenControlsTask);main.removeCallbacks(tick);
+        fullscreenControlsVisible=false;fullscreenOverlay.setVisibility(View.GONE);mediaStage.setFocusable(true);focusTarget(mediaStage);
+    }
+    private void updateFullscreenTransport(String progressText){
+        if(!fullscreen||controller==null)return;
+        textChanged(fullscreenTitle,playing==null?"":playing.title+"  ·  "+playing.artist);
+        textChanged(fullscreenPlay,controller.isPlaying()?"Pause":"Play");
+        if(fullscreenControlsVisible){
+            textChanged(fullscreenTime,progressText);
+            if(!fullscreenSeeking)fullscreenSeek.setProgress(durationMs()>0?(int)Math.min(1000,controller.getCurrentPosition()*1000/durationMs()):0);
+        }
+        boolean isPlaying=controller.isPlaying(),error=fullscreenHasError();
+        boolean reveal=fullscreenWasPlaying&&!isPlaying||!fullscreenHadError&&error;
+        boolean resume=!fullscreenWasPlaying&&isPlaying;
+        fullscreenWasPlaying=isPlaying;fullscreenHadError=error;
+        fullscreenRetry.setVisibility(error?View.VISIBLE:View.GONE);
+        textChanged(fullscreenState,videoQualityStatus()+" · "+(error?playbackState.getText().toString():controller.getPlaybackState()==Player.STATE_BUFFERING?"Getting your video ready…"
+                :!isPlaying?"Paused · Left/Right on the seek rail skips 10s. Back hides controls; Back again exits."
+                :"Left/Right seeks when controls are hidden. Back hides controls; Back again exits."));
+        if(!isPlaying||error)main.removeCallbacks(hideFullscreenControlsTask);
+        if(reveal&&!fullscreenControlsVisible)showFullscreenControls(true);
+        else if(resume&&fullscreenControlsVisible)armFullscreenHide();
+    }
+    private String videoQualityStatus(){
+        String requested=videoQuality==0?"Auto ≤720p":videoQuality+"p max";
+        if(controller==null||!videoMode)return requested;
+        int width=controller.getVideoSize().width,height=controller.getVideoSize().height;
+        return width>0&&height>0?requested+" · "+width+"×"+height:requested;
+    }
+    private void showVideoQuality(){
+        if(!foreground||destroyed||screen!=Screen.NOW||!videoMode||controller==null||qualityDialog!=null)return;
+        main.removeCallbacks(hideFullscreenControlsTask);
+        final int[] choices={0,360,480,720,1080,2160};int checked=0;
+        for(int index=0;index<choices.length;index++)if(choices[index]==videoQuality){checked=index;break;}
+        String[] labels={"Auto · up to 720p","360p max · lower if unavailable","480p max · lower if unavailable",
+                "720p max · lower if unavailable","1080p max · lower if unavailable","4K (2160p) max · lower if unavailable"};
+        qualityDialog=new AlertDialog.Builder(this,dev.ytmusictv.R.style.AppDialogTheme).setTitle("Maximum video quality · TV/source limits")
+                .setSingleChoiceItems(labels,checked,(dialog,which)->{
+                    dialog.dismiss();send(NativePlaybackCommands.SET_VIDEO_QUALITY,NativePlaybackCommands.videoQualityArgs(choices[which]),"");
+                }).setNegativeButton("Back",null).create();
+        qualityDialog.setOnDismissListener(dialog->{
+            qualityDialog=null;
+            main.post(()->{
+                if(!foreground||destroyed||screen!=Screen.NOW||!videoMode)return;
+                if(fullscreen){showFullscreenControls(false);focusTarget(fullscreenQuality);}
+                else if(qualityButton.isShown())focusTarget(qualityButton);
+            });
+        });
+        qualityDialog.show();
+    }
+    private void dismissQualityDialog(){
+        if(qualityDialog==null)return;
+        AlertDialog dialog=qualityDialog;qualityDialog=null;dialog.setOnDismissListener(null);dialog.dismiss();
+    }
+    private boolean dispatchFullscreenKey(KeyEvent event,long press){
+        if(!fullscreen||!foreground||!hasWindowFocus())return false;
+        int key=event.getKeyCode();
+        boolean backKey=key==KeyEvent.KEYCODE_BACK,menu=key==KeyEvent.KEYCODE_MENU;
+        boolean arrows=key==KeyEvent.KEYCODE_DPAD_LEFT||key==KeyEvent.KEYCODE_DPAD_RIGHT||key==KeyEvent.KEYCODE_DPAD_UP||key==KeyEvent.KEYCODE_DPAD_DOWN;
+        boolean activate=key==KeyEvent.KEYCODE_DPAD_CENTER||key==KeyEvent.KEYCODE_ENTER;
+        if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getRepeatCount()==0&&fullscreenControlsVisible)armFullscreenHide();
+        if(backKey||menu||!fullscreenControlsVisible&&(arrows||activate)){
+            if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getRepeatCount()==0){
+                heldShortcuts.add(press);
+                if(backKey){if(fullscreenControlsVisible)hideFullscreenControls();else exitFullscreen(true);}
+                else if(menu){if(fullscreenControlsVisible)hideFullscreenControls();else showFullscreenControls(true);}
+                else if(key==KeyEvent.KEYCODE_DPAD_LEFT||key==KeyEvent.KEYCODE_DPAD_RIGHT)seekRelative(key==KeyEvent.KEYCODE_DPAD_LEFT?-10_000:10_000);
+                else showFullscreenControls(true);
+            }
+            return true;
+        }
+        return false;
+    }
     private void togglePlay(){if(controller!=null){if(controller.isPlaying())controller.pause();else controller.play();}}
     private void next(){if(controller!=null&&controller.hasNextMediaItem())controller.seekToNextMediaItem();}
     private void previous(){if(controller!=null&&controller.hasPreviousMediaItem())controller.seekToPreviousMediaItem();}
@@ -903,7 +1104,7 @@ public final class NativeTvActivity extends Activity {
             if(which==0)send(NativePlaybackCommands.SET_BACKGROUND,NativePlaybackCommands.boolArgs(!background),"Listening preference saved.");
             else if(which==1)send(NativePlaybackCommands.RESTORE,Bundle.EMPTY,"Saved queue restored. Press Play when ready.");
             else if(which==2)send(NativePlaybackCommands.RETRY,Bundle.EMPTY,"Retrying…");
-            else new AlertDialog.Builder(this,dev.ytmusictv.R.style.AppDialogTheme).setTitle("Made for your remote").setMessage("Arrows move focus. OK activates. Search uses the TV keyboard.\n\nActions beside every result offers Play next and Add to queue. Queue → Actions → Move uses Up/Down and OK; Back cancels.\n\nChannel +/− and media Next/Previous change tracks. Left/Right on the seek rail skips 10 seconds. Menu shows or hides Controls. Back returns to the previous screen.").setPositiveButton("Got it",null).show();
+            else new AlertDialog.Builder(this,dev.ytmusictv.R.style.AppDialogTheme).setTitle("Made for your remote").setMessage("Arrows move focus. OK activates. Search uses the TV keyboard.\n\nActions beside every result offers Play next and Add to queue. Queue → Actions → Move uses Up/Down and OK; Back cancels.\n\nChannel +/− and media Next/Previous change tracks. Left/Right on the seek rail skips 10 seconds. Menu shows or hides Controls. Back returns to the previous screen.\n\nVideo → Full screen fills the TV. OK/Up/Down shows playback controls. Rewind/Forward and Left/Right on the seek rail skip 10 seconds; Down reaches the rail. Menu hides or shows controls. Back closes the controls; press Back again to exit full screen.").setPositiveButton("Got it",null).show();
         });
     }
     private interface Choice {void select(int which);}
@@ -943,11 +1144,13 @@ public final class NativeTvActivity extends Activity {
             boolean openSearch=key==KeyEvent.KEYCODE_EXPLORER||(tcl&&scan==651);
             if((keyboard||openLyrics||openSearch)&&event.getAction()==KeyEvent.ACTION_DOWN&&event.getRepeatCount()==0){
                 heldShortcuts.add(press);
+                if(fullscreen)exitFullscreen(false);
                 if(openLyrics){lyricsShown=true;show(Screen.NOW,true);updateNow();}
                 else{show(Screen.SEARCH,true);if(keyboard){focusTarget(search);openKeyboard();}}
                 return true;
             }
         }
+        if(dispatchFullscreenKey(event,press))return true;
         if(!typing()&&(key==KeyEvent.KEYCODE_CHANNEL_UP||key==KeyEvent.KEYCODE_CHANNEL_DOWN)){
             if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getRepeatCount()==0){if(key==KeyEvent.KEYCODE_CHANNEL_UP)next();else previous();}return true;
         }
@@ -972,6 +1175,7 @@ public final class NativeTvActivity extends Activity {
         return super.dispatchKeyEvent(event);
     }
     @Override public void onBackPressed(){
+        if(fullscreen){if(fullscreenControlsVisible)hideFullscreenControls();else exitFullscreen(true);return;}
         if(!moving.isEmpty()){cancelMove();return;}
         if(!back.isEmpty()){forward.addLast(captureNavigation());restoreNavigation(back.removeLast());}
         else super.onBackPressed();
@@ -1041,13 +1245,13 @@ public final class NativeTvActivity extends Activity {
         }else{send(NativePlaybackCommands.APP_FOREGROUND,NativePlaybackCommands.boolArgs(true),"");requestSnapshot();updateNow();scheduleClock();}
     }
     @Override protected void onStop(){
-        foreground=false;cancelArtworkRepair();heldShortcuts.clear();cancelNativeVoice(false,false);videoCaptureGeneration++;main.removeCallbacks(tick);lyrics.stop();artwork.stopLoading();detachVideo();updateVideoVisibility();
+        foreground=false;dismissQualityDialog();exitFullscreen(false);main.removeCallbacks(hideFullscreenControlsTask);cancelArtworkRepair();heldShortcuts.clear();cancelNativeVoice(false,false);videoCaptureGeneration++;main.removeCallbacks(tick);lyrics.stop();artwork.stopLoading();detachVideo();updateVideoVisibility();
         if(controller!=null)send(NativePlaybackCommands.APP_FOREGROUND,NativePlaybackCommands.boolArgs(false),"");
         super.onStop();
     }
     @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);state.putString("query",search.getText().toString());state.putBoolean("lyrics",lyricsShown);state.putString("searchKind",searchKind.name());}
     @Override protected void onDestroy(){
-        destroyed=true;cancelArtworkRepair();cancelNativeVoice(false,false);videoCaptureGeneration++;main.removeCallbacksAndMessages(null);provider.close();lyrics.stop();artwork.close();
+        destroyed=true;dismissQualityDialog();video.setKeepScreenOn(false);main.removeCallbacks(hideFullscreenControlsTask);cancelArtworkRepair();cancelNativeVoice(false,false);videoCaptureGeneration++;main.removeCallbacksAndMessages(null);provider.close();lyrics.stop();artwork.close();
         if(controller!=null)controller.removeListener(playerListener);
         if(connection!=null)MediaController.releaseFuture(connection);
         controller=null;super.onDestroy();

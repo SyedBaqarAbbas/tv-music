@@ -41,6 +41,10 @@ public final class YouTubeStreamResolver implements NativeStreamResolver {
     public YouTubeStreamResolver() { initialize(); }
 
     @Override public PlaybackSource resolve(NativeTrack track, boolean video) throws Exception {
+        return resolve(track, video, 0);
+    }
+
+    @Override public PlaybackSource resolve(NativeTrack track, boolean video, int maximumVideoHeight) throws Exception {
         if (track == null || !track.videoId.matches("[A-Za-z0-9_-]{11}")) throw new IOException("Invalid track identity.");
         StreamExtractor extractor = ServiceList.YouTube.getStreamExtractor("https://www.youtube.com/watch?v=" + track.videoId);
         extractor.fetchPage();
@@ -53,13 +57,13 @@ public final class YouTubeStreamResolver implements NativeStreamResolver {
             return new PlaybackSource(audio.getContent(), "", mime(audio, "audio/mp4"), "",
                     headers, expires(audio.getContent()));
         }
-        VideoStream picture = chooseVideo(extractor.getVideoStreams());
-        if (picture != null) {
+        VideoStream picture = chooseVideo(extractor.getVideoStreams(), extractor.getVideoOnlyStreams(),
+                maximumVideoHeight, audio != null, new HardwareVideoSupport(), new LegacyVp9Probe());
+        if (picture != null && !picture.isVideoOnly()) {
             // A muxed source already contains audio: the player must not merge a duplicate.
             return new PlaybackSource("", picture.getContent(), "", mime(picture, "video/mp4"),
                     headers, expires(picture.getContent()));
         }
-        picture = chooseVideo(extractor.getVideoOnlyStreams());
         if (picture == null || audio == null) throw new IOException("Video is unavailable for this recording. Audio can still play.");
         return new PlaybackSource(audio.getContent(), picture.getContent(), mime(audio, "audio/mp4"),
                 mime(picture, "video/mp4"), headers, Math.min(expires(audio.getContent()), expires(picture.getContent())));
@@ -78,23 +82,90 @@ public final class YouTubeStreamResolver implements NativeStreamResolver {
         return best;
     }
 
-    private static VideoStream chooseVideo(List<VideoStream> streams) {
+    static int videoHeightCap(int requested) {
+        switch (requested) {
+            case 360: case 480: case 720: case 1080: case 2160: return requested;
+            default: return 720; // Auto and unrecognized saved values retain the TV-safe default.
+        }
+    }
+
+    interface DecoderSupport { boolean supports(int width, int height, int fps, int vp9Level); }
+    interface LegacyVp9Verifier { boolean verify(VideoStream stream); }
+
+    /** Compare both representation lists before choosing; muxed only wins a resolution tie. */
+    static VideoStream chooseVideo(List<VideoStream> muxed, List<VideoStream> videoOnly,
+            int requestedHeight, boolean audioAvailable) {
+        return chooseVideo(muxed, videoOnly, requestedHeight, audioAvailable, new HardwareVideoSupport());
+    }
+    static VideoStream chooseVideo(List<VideoStream> muxed, List<VideoStream> videoOnly,
+            int requestedHeight, boolean audioAvailable, DecoderSupport decoder) {
         VideoStream best = null;
-        int bestScore = Integer.MIN_VALUE;
-        for (VideoStream stream : streams) {
-            if (!usable(stream)) continue;
-            int height = stream.getHeight();
-            if (height <= 0) {
-                try { height = Integer.parseInt(stream.getResolution().replaceAll("[^0-9].*", "")); }
-                catch (NumberFormatException ignored) { height = 360; }
+        int bestHeight = 0;
+        int cap = videoHeightCap(requestedHeight);
+        for (int group = 0; group < 2; group++) {
+            List<VideoStream> streams = group == 0 ? muxed : videoOnly;
+            if (streams == null) continue;
+            for (VideoStream stream : streams) {
+                if (!usable(stream) || (stream.isVideoOnly() && !audioAvailable)) continue;
+                // Unknown rates cannot establish the supported 30 fps ceiling.
+                if (stream.getFps() <= 0 || stream.getFps() > 30) continue;
+                int height = videoHeight(stream);
+                if (height <= 0 || height > cap) continue;
+                String codec = stream.getCodec();
+                if (height <= 1080) {
+                    if (!"video/mp4".equals(mime(stream, "")) || codec == null
+                            || !codec.regionMatches(true, 0, "avc", 0, 3)) continue;
+                } else {
+                    int level = VideoCodecPolicy.verifiedVp9SdrLevel(codec);
+                    String type = mime(stream, "");
+                    if (cap != 2160 || level == 0 || stream.getWidth() <= 0 || stream.getWidth() > 4096
+                            || (!type.equals("video/webm") && !type.equals("video/mp4")) || decoder == null || !decoder.supports(stream.getWidth(), height, stream.getFps(), level)) continue;
+                }
+                if (height > bestHeight || (height == bestHeight && best != null
+                        && best.isVideoOnly() && !stream.isVideoOnly())) {
+                    best = stream;
+                    bestHeight = height;
+                }
             }
-            if (height > 720 || stream.getFps() > 30) continue;
-            String codec = stream.getCodec();
-            int score = (mime(stream, "").contains("mp4") ? 1500 : 0)
-                    + (codec != null && codec.startsWith("avc") ? 1000 : 0) + height;
-            if (score > bestScore) { best = stream; bestScore = score; }
         }
         return best;
+    }
+
+    /** Legacy 'vp9' metadata requires actual header proof, after the hardware preflight. */
+    static VideoStream chooseVideo(List<VideoStream> muxed, List<VideoStream> videoOnly,
+            int requestedHeight, boolean audioAvailable, DecoderSupport decoder, LegacyVp9Verifier verifier) {
+        VideoStream best = chooseVideo(muxed, videoOnly, requestedHeight, audioAvailable, decoder);
+        if (requestedHeight != 2160 || decoder == null || verifier == null) return best;
+        VideoStream first = null, second = null;
+        for (int group = 0; group < 2; group++) {
+            List<VideoStream> streams = group == 0 ? muxed : videoOnly;
+            if (streams == null) continue;
+            for (VideoStream stream : streams) {
+                if (!usable(stream) || (stream.isVideoOnly() && !audioAvailable)
+                        || !"video/webm".equals(mime(stream,"")) || !"vp9".equalsIgnoreCase(stream.getCodec())
+                        || stream.getFps() <= 0 || stream.getFps() > 30 || stream.getWidth() <= 0
+                        || stream.getWidth() > 4096 || stream.getHeight() <= 1080 || stream.getHeight() > 2160
+                        || (best != null && stream.getHeight() <= videoHeight(best))) continue;
+                if (first == null || stream.getHeight() > first.getHeight()) { second = first; first = stream; }
+                else if (stream != first && (second == null || stream.getHeight() > second.getHeight())) second = stream;
+            }
+        }
+        for (VideoStream candidate : new VideoStream[]{first,second}) {
+            if (Thread.currentThread().isInterrupted()) break;
+            if (candidate != null && decoder.supports(candidate.getWidth(),candidate.getHeight(),candidate.getFps(),0)
+                    && verifier.verify(candidate)) return candidate;
+        }
+        return best;
+    }
+
+    private static int videoHeight(VideoStream stream) {
+        if (stream.getHeight() > 0) return stream.getHeight();
+        String resolution = stream.getResolution();
+        if (resolution != null && resolution.matches("[0-9]{2,4}p(?:[0-9]{1,3})?")) {
+            try { return Integer.parseInt(resolution.substring(0, resolution.indexOf('p'))); }
+            catch (NumberFormatException ignored) { }
+        }
+        return 0;
     }
 
     private static boolean usable(Stream stream) {

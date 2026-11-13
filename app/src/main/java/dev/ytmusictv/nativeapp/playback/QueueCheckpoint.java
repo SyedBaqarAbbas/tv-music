@@ -32,7 +32,8 @@ final class QueueCheckpoint {
                     .put("baseOrder", new JSONArray(snapshot.getStringArrayList("baseOrder")))
                     .put("position", Math.max(0, position)).put("shuffle", snapshot.getBoolean("shuffle"))
                     .put("repeat", snapshot.getInt("repeat")).put("video", snapshot.getBoolean("video"))
-                    .put("background", snapshot.getBoolean("background"));
+                    .put("background", snapshot.getBoolean("background"))
+                    .put("videoQuality", VideoQualityPolicy.restored(snapshot.getInt("videoQuality", 0)));
             preferences.edit().putString("checkpoint", state.toString()).apply();
         } catch (Exception ignored) { /* A malformed item must not crash active playback. */ }
     }
@@ -66,6 +67,7 @@ final class QueueCheckpoint {
             snapshot.putInt("repeat", Math.max(0, Math.min(2, state.optInt("repeat"))));
             snapshot.putBoolean("video", state.optBoolean("video"));
             snapshot.putBoolean("background", state.optBoolean("background"));
+            snapshot.putInt("videoQuality", VideoQualityPolicy.restored(state.optInt("videoQuality", 0)));
         } catch (Exception ignored) { }
         snapshot.putParcelableArrayList("entries", entries);
         return snapshot;
